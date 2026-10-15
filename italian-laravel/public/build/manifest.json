@@ -1,0 +1,79 @@
+{
+  "resources/css/app.css": {
+    "file": "assets/app-F019QEwB.css",
+    "name": "app",
+    "names": [
+      "app.css"
+    ],
+    "src": "resources/css/app.css",
+    "isEntry": true
+  },
+  "resources/css/auth/login.css": {
+    "file": "assets/login-W8Xb7BRQ.css",
+    "name": "login",
+    "names": [
+      "login.css"
+    ],
+    "src": "resources/css/auth/login.css",
+    "isEntry": true,
+    "assets": [
+      "assets/Montserrat-Regular-Cyjg2l_H.ttf",
+      "assets/Montserrat-Bold-wxX70Ed7.ttf",
+      "assets/Montserrat-ExtraBold-krvMyJYB.ttf"
+    ]
+  },
+  "resources/css/authenticated.css": {
+    "file": "assets/authenticated-B3Vkd8uv.css",
+    "name": "authenticated",
+    "names": [
+      "authenticated.css"
+    ],
+    "src": "resources/css/authenticated.css",
+    "isEntry": true
+  },
+  "resources/css/users-read.css": {
+    "file": "assets/users-read-CZ-f-0Su.css",
+    "name": "users-read",
+    "names": [
+      "users-read.css"
+    ],
+    "src": "resources/css/users-read.css",
+    "isEntry": true
+  },
+  "resources/fonts/montserrat/Montserrat-Bold.ttf": {
+    "file": "assets/Montserrat-Bold-wxX70Ed7.ttf",
+    "src": "resources/fonts/montserrat/Montserrat-Bold.ttf"
+  },
+  "resources/fonts/montserrat/Montserrat-ExtraBold.ttf": {
+    "file": "assets/Montserrat-ExtraBold-krvMyJYB.ttf",
+    "src": "resources/fonts/montserrat/Montserrat-ExtraBold.ttf"
+  },
+  "resources/fonts/montserrat/Montserrat-Regular.ttf": {
+    "file": "assets/Montserrat-Regular-Cyjg2l_H.ttf",
+    "src": "resources/fonts/montserrat/Montserrat-Regular.ttf"
+  },
+  "resources/js/app.js": {
+    "file": "assets/app-DIZEten-.js",
+    "name": "app",
+    "src": "resources/js/app.js",
+    "isEntry": true
+  },
+  "resources/js/auth/login.js": {
+    "file": "assets/login-vtgss9QC.js",
+    "name": "login",
+    "src": "resources/js/auth/login.js",
+    "isEntry": true
+  },
+  "resources/js/authenticated.js": {
+    "file": "assets/authenticated-3ig5fbyA.js",
+    "name": "authenticated",
+    "src": "resources/js/authenticated.js",
+    "isEntry": true
+  },
+  "resources/js/users-read.js": {
+    "file": "assets/users-read-DQFjaT0h.js",
+    "name": "users-read",
+    "src": "resources/js/users-read.js",
+    "isEntry": true
+  }
+}
