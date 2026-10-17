@@ -409,7 +409,12 @@
 .users-form__radios { display: flex; align-items: center; gap: 12px; min-height: 34px; }
 .users-form__radios label { font-weight: 400; }
 .users-form__error { color: #a94442; font-size: 13px; }
-.users-form__success { padding: 15px; background: #dff0d8; color: #3c763d; }
+.users-flash { display: flex; align-items: center; gap: 10px; min-height: 62px; margin: 0 10px 20px; padding: 15px; }
+.users-flash--success { color: #fff; background: #00a65a; }
+.users-flash__icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+.users-flash strong { font-size: 18px; letter-spacing: .1px; }
+.users-flash__close { margin-left: auto; padding: 0 2px; border: 0; color: inherit; background: transparent; font-size: 20px; line-height: 1; cursor: pointer; opacity: .7; }
+.users-flash__close:hover, .users-flash__close:focus-visible { opacity: 1; }
 .users-dialog { width: min(600px, calc(100% - 30px)); max-height: calc(100vh - 40px); padding: 0; border: 1px solid #ddd; border-radius: 4px; color: #333; background: #fff; }
 .users-dialog::backdrop { background: rgb(0 0 0 / 50%); }
 .users-dialog__header, .users-dialog__footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 15px; }
@@ -420,6 +425,17 @@
 .users-dialog__footer { justify-content: flex-end; border-top: 1px solid #e5e5e5; padding: 15px 0 0; }
 
 .users-read__button--default { color: #444; background: #fff; border-color: #ddd; }
+.users-success-dialog { width: min(512px, calc(100% - 32px)); border: 0; border-radius: 6px; padding: 40px 28px; color: #555; text-align: center; box-shadow: 0 6px 22px rgb(0 0 0 / 25%); }
+.users-success-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.users-success-dialog__symbol { width: 88px; height: 88px; margin: 0 auto 25px; color: #a5dc86; }
+.users-success-dialog__symbol svg { width: 100%; height: 100%; overflow: visible; fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.users-success-dialog__symbol circle { stroke-dasharray: 214; stroke-dashoffset: 214; animation: users-success-circle .55s ease-out forwards; }
+.users-success-dialog__symbol path { stroke-dasharray: 52; stroke-dashoffset: 52; animation: users-success-check .35s .45s ease-out forwards; }
+.users-success-dialog h2 { margin: 0; color: #555; font-size: 30px; font-weight: 700; }
+.users-success-dialog p { margin: 8px 0 0; font-size: 18px; }
+@keyframes users-success-circle { to { stroke-dashoffset: 0; } }
+@keyframes users-success-check { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .users-success-dialog__symbol circle, .users-success-dialog__symbol path { animation: none; stroke-dashoffset: 0; } }
 @media (min-width: 561px) {
     .users-dialog .users-form__field { display: grid; grid-template-columns: 25% minmax(0, 1fr); column-gap: 12px; }
     .users-dialog .users-form__field > label, .users-dialog .users-form__label { text-align: right; line-height: 34px; }

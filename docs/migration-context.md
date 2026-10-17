@@ -3,7 +3,7 @@
 ## 1. Alcance, evidencia y prioridad
 
 Base: auditoría estática de `9d7b44df`; actualizada tras incorporar por fast-forward
-`66dc03df` (`laravel-update`) y desarrollar Usuarios sobre ese estado. Distingue
+`66dc03df` (`laravel-update`) y desarrollar/validar Usuarios sobre ese estado. Distingue
 código inspeccionado, ejecución con datos sintéticos y pendientes con datos reales.
 El repositorio canónico de este entorno es `Proxidi/italian`, rama local `work`;
 la rama `feature/inicio` del responsable pertenece a otro repositorio y no se
@@ -161,8 +161,9 @@ visible y de los escenarios con datos: pendiente.
 
 ## 6. Roles y autorización
 
-Mapeo **codificado** en `LegacyUserRolesSeeder` y coherente con la selección de
-paneles legacy; no acredita las asignaciones actuales en la BD:
+Mapeo codificado de forma central en `App\Support\LegacyUserRoleSynchronizer`,
+`SaveUser` y `LegacyUserRolesSeeder`; es coherente con la selección de paneles
+legacy, pero no acredita las asignaciones actuales en la BD:
 
 | `rol_id` | Denominación heredada | Rol Spatie | Panel legacy / panel Laravel |
 | --- | --- | --- | --- |
@@ -175,8 +176,13 @@ paneles legacy; no acredita las asignaciones actuales en la BD:
 `LegacyUserRolesSeeder` crea/busca roles web y ejecuta `syncRoles()` en una
 transacción, por lotes de usuarios; rechaza `rol_id` sin correspondencia. Sustituye
 asignaciones Spatie de los usuarios; no actualiza `tbl_usuarios.Password` ni otros
-campos legacy. Su existencia no prueba que haya sido ejecutado ni constituye
-sincronización automática durante login. El nuevo `SaveUser` sincroniza en altas y cambios explícitos de rol (sección 9).
+campos legacy. Es útil para el primer aprovisionamiento, pero ya no es necesario
+volver a ejecutarlo después de cada alta o edición legacy: tras validar SHA-1 y sus
+joins, el login Laravel reconcilia la asignación Spatie exacta de ese usuario desde
+su `rol_id`. No crea roles ni permisos: si `rol_id` no está mapeado, o falta el rol
+Spatie `web` correspondiente, devuelve 403 antes de crear sesión o bitácora.
+`SaveUser` conserva la sincronización atómica de altas y cambios explícitos de rol
+(sección 9).
 
 `UsersReadPermissionsSeeder` define esta matriz de **relaciones rol-permiso**:
 
@@ -193,9 +199,11 @@ asignaciones posteriores. Por tanto, la matriz no demuestra los permisos efectiv
 de una BD real. No se encontró un bypass propio global para `superadmin`.
 
 `config/permission.php` habilita la integración con Gate. Las rutas usan `can` y
-los Form Requests de lectura/escritura vuelven a comprobar la capacidad. Los nombres físicos
-`rol_id` se usan todavía para joins/datos y el seeder; la autorización activa de
-Usuarios se expresa con capacidades Spatie.
+los Form Requests de lectura/escritura vuelven a comprobar la capacidad. Durante
+la convivencia, `rol_id` es la fuente autorizada para elegir el rol Spatie de
+acceso al autenticar; los permisos efectivos siguen siendo únicamente los que
+tenga ese rol (más permisos directos preexistentes). No se otorgan permisos por
+defecto ni se convierte `rol_id` en un bypass de autorización.
 
 ### Legacy: navegación distinta de autorización
 
@@ -308,11 +316,43 @@ parcial. Una colisión concurrente de Email/Usuario se presenta como validación
 
 No se crea estructura nueva, no hay cast hashed ni cambios del login. El alta
 completa en una sola transacción las dos operaciones que legacy hacía separadas.
-Mensajes y destino: alta «Usuario Ingresado! Registro Exitoso!»; edición «Perfil
-Actualizado»; ambos vuelven a Usuarios. Validación vuelve con campos/errores en
-español, conserva valores y reabre el modal de alta; nunca rellena password.
-No se incorporaron Bootstrap/jQuery/SweetAlert; se conserva la organización modal,
-campos, colores de acciones y formulario de edición con CSS propio/JS nativo.
+Mensajes y destino: la alta vuelve a Usuarios, muestra «Usuario Ingresado!» /
+«Registro Exitoso!» en un diálogo nativo con check animado y sin botón, y redirige
+automáticamente al listado una vez concluida la animación. La edición vuelve a
+Usuarios con la alerta verde intensa «Perfil Actualizado», icono y cierre manual,
+aproximando el aviso legacy. El diálogo de alta se muestra solo con el flash de
+éxito; los errores de validación o guardado reabren el formulario con sus errores,
+sin confirmación ni contraseña repoblada. El JS deshabilita el envío válido para
+evitar duplicados. No se incorporaron Bootstrap/jQuery/SweetAlert; se conserva la
+organización modal, campos, colores de acciones y formulario de edición con CSS
+propio/JS nativo.
+
+### Convivencia de roles y login verificada con pruebas sintéticas
+
+CodeIgniter `Usuarios::store()` y `Usuarios::update()` escriben directamente
+`tbl_usuarios.rol_id`; `Mdl_seguridad::autenticar()` solo verifica Usuario,
+Password SHA-1 y joins de plaza/rol. No conoce `model_has_roles`. Laravel antes
+comprobaba exclusivamente `hasAnyRole()` después de esa misma consulta: un usuario
+creado o cambiado en CodeIgniter podía tener credenciales correctas y aun así
+recibir 403 «El usuario no tiene un rol de acceso asignado». Como la inserción en
+`tbl_bitacora_accesos` estaba después del 403, tampoco dejaba acceso registrado.
+
+Ahora `AuthenticatedSessionController` usa el sincronizador central después de
+validar esas credenciales y antes de la bitácora/sesión. Reemplaza una asignación
+Spatie ausente o desactualizada por el único rol derivado de `rol_id`, incluso para
+Dueño, Manager, Gerente, SubManager y Socio. Si falta el rol Spatie provisionado o
+el ID legacy es inválido, conserva el 403, no crea pivotes, no inicia sesión y no
+registra bitácora. Esto evita depender de un seeder manual por cada modificación
+legacy sin ampliar permisos de Usuarios. Una modificación hecha por Laravel ya
+sincroniza en su propia transacción; en el siguiente login también queda coherente
+si otro sistema la hubiera alterado después.
+
+Las pruebas SQLite cubren los cinco roles creados sin pivot Spatie, un cambio de
+rol directo que representa CodeIgniter, IDs legacy inválidos, falta de un rol
+Spatie y las rutas Laravel de alta/edición. No se ejecutaron ambas aplicaciones
+contra el dump compartido: siguen pendientes conflictos concurrentes reales,
+configuración efectiva de roles/permisos de esa instancia y la comprobación visual
+en navegadores objetivo.
 
 ### Autorización comprobada y activación pendiente
 

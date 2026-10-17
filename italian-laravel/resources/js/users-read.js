@@ -53,3 +53,16 @@ userDialog?.querySelector('form')?.addEventListener('submit', (event) => {
         event.currentTarget.querySelector('[type="submit"]').disabled = true;
     }
 });
+
+document.querySelector('[data-dismiss-flash]')?.addEventListener('click', (event) => {
+    event.currentTarget.closest('.users-flash')?.remove();
+});
+
+const createdDialog = document.querySelector('[data-user-created-dialog]');
+if (createdDialog) {
+    createdDialog.showModal();
+
+    window.setTimeout(() => {
+        window.location.assign(createdDialog.dataset.redirectUrl);
+    }, 2200);
+}

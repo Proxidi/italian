@@ -32,7 +32,9 @@ class UsersWriteController extends Controller
     {
         $this->persist($request, $save);
 
-        return to_route('usuarios.index')->with('message', 'Usuario Ingresado! Registro Exitoso!');
+        return to_route('usuarios.index')
+            ->with('message', 'Usuario Ingresado!')
+            ->with('user-created', true);
     }
 
     public function update(SaveUserRequest $request, User $user, SaveUser $save): RedirectResponse

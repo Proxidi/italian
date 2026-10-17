@@ -26,7 +26,13 @@
     </header>
 
     @if(session('message'))
-        <p class="users-form__success" role="status">{{ session('message') }}</p>
+        <div class="users-flash users-flash--success" role="status">
+            <svg class="users-flash__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m5 12 4 4L19 6" />
+            </svg>
+            <strong>{{ session('message') }}</strong>
+            <button class="users-flash__close" type="button" data-dismiss-flash aria-label="Cerrar mensaje">×</button>
+        </div>
     @endif
     <section class="users-read" aria-label="{{ $title }}">
         @if ($errors->any())
@@ -267,5 +273,21 @@
         @can('create', \App\Models\User::class)
             @include('usuarios.partials.create')
         @endcan
+    @endif
+
+    @if(session('user-created'))
+        <dialog
+            class="users-success-dialog"
+            data-user-created-dialog
+            data-redirect-url="{{ route('usuarios.index') }}"
+            aria-labelledby="user-created-title"
+            aria-describedby="user-created-description"
+        >
+            <div class="users-success-dialog__symbol" aria-hidden="true">
+                <svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" /><path d="m24 40 11 11 22-24" /></svg>
+            </div>
+            <h2 id="user-created-title">Usuario Ingresado!</h2>
+            <p id="user-created-description">Registro Exitoso!</p>
+        </dialog>
     @endif
 @endsection

@@ -3,12 +3,13 @@
 namespace App\Actions\Users;
 
 use App\Models\User;
+use App\Support\LegacyUserRoleSynchronizer;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
 
 class SaveUser
 {
-    public const ROLES = [1 => 'superadmin', 2 => 'admin', 3 => 'root', 4 => 'submanager', 5 => 'socio'];
+    public const ROLES = LegacyUserRoleSynchronizer::ROLES;
 
     public function handle(array $data, ?User $subject = null): User
     {

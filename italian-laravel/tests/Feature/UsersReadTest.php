@@ -44,6 +44,8 @@ class UsersReadTest extends TestCase
             'cache.default' => 'array',
             'permission.cache.store' => 'array',
             'session.driver' => 'array',
+            // Keep exports isolated from a mounted application's storage owner.
+            'excel.temporary_files.local_path' => sys_get_temp_dir(),
         ]);
 
         DB::purge(self::CONNECTION);
@@ -651,6 +653,103 @@ class UsersReadTest extends TestCase
         $this->assertDatabaseHas('tbl_bitacora_accesos', ['usuario_id' => $subject->id, 'plaza_id' => 2]);
     }
 
+    #[DataProvider('legacyLoginRoles')]
+    public function test_login_reconciles_a_legacy_created_user_without_a_spatie_assignment(
+        int $legacyRoleId,
+        string $spatieRole,
+    ): void {
+        $subject = $this->createLegacyOnlyUser($legacyRoleId);
+        $this->createLoginReportTable();
+
+        $this->post(route('login.store'), [
+            'username' => $subject->Usuario,
+            'password' => 'clave-de-prueba',
+        ])->assertRedirect(route('inicio'));
+
+        $this->assertAuthenticatedAs($subject, 'web');
+        $this->assertSame([$spatieRole], $subject->fresh()->getRoleNames()->all());
+        $this->assertDatabaseHas('tbl_bitacora_accesos', [
+            'usuario_id' => $subject->id,
+            'plaza_id' => $subject->plaza_id,
+        ]);
+    }
+
+    public static function legacyLoginRoles(): array
+    {
+        return [
+            'dueño' => [1, 'superadmin'],
+            'manager' => [2, 'admin'],
+            'gerente' => [3, 'root'],
+            'submanager' => [4, 'submanager'],
+            'socio' => [5, 'socio'],
+        ];
+    }
+
+    public function test_login_replaces_a_stale_spatie_role_after_a_legacy_role_change(): void
+    {
+        $subject = $this->createUser('admin');
+        DB::table('tbl_usuarios')->where('id', $subject->id)->update(['rol_id' => 4]);
+        $this->createLoginReportTable();
+
+        $this->post(route('login.store'), [
+            'username' => $subject->Usuario,
+            'password' => 'clave-de-prueba',
+        ])->assertRedirect(route('inicio'));
+
+        $this->assertSame(['submanager'], $subject->fresh()->getRoleNames()->all());
+        $this->assertDatabaseHas('tbl_bitacora_accesos', ['usuario_id' => $subject->id]);
+    }
+
+    public function test_login_rejects_an_invalid_legacy_role_without_assigning_access_or_logging_it(): void
+    {
+        DB::table('tbl_roles')->insert(['id' => 99, 'Nombre' => 'No migrado']);
+        $subject = $this->createLegacyOnlyUser(99);
+        $this->createLoginReportTable();
+
+        $this->post(route('login.store'), [
+            'username' => $subject->Usuario,
+            'password' => 'clave-de-prueba',
+        ])->assertForbidden();
+
+        $this->assertGuest('web');
+        $this->assertSame([], $subject->fresh()->getRoleNames()->all());
+        $this->assertDatabaseMissing('tbl_bitacora_accesos', ['usuario_id' => $subject->id]);
+    }
+
+    public function test_login_rejects_a_legacy_role_when_its_spatie_role_is_not_provisioned(): void
+    {
+        Role::findByName('submanager', 'web')->delete();
+        $subject = $this->createLegacyOnlyUser(4);
+        $this->createLoginReportTable();
+
+        $this->post(route('login.store'), [
+            'username' => $subject->Usuario,
+            'password' => 'clave-de-prueba',
+        ])->assertForbidden();
+
+        $this->assertGuest('web');
+        $this->assertDatabaseMissing('tbl_bitacora_accesos', ['usuario_id' => $subject->id]);
+    }
+
+    public function test_success_messages_preserve_the_legacy_edit_alert_and_creation_dialog_contract(): void
+    {
+        $root = $this->createUser('root');
+
+        $this->actingAs($root, 'web')
+            ->withSession(['message' => 'Perfil Actualizado'])
+            ->get(route('usuarios.index'))
+            ->assertSee('users-flash--success', false)
+            ->assertSee('Perfil Actualizado')
+            ->assertSee('data-dismiss-flash', false);
+
+        $this->actingAs($root, 'web')
+            ->withSession(['message' => 'Usuario Ingresado!', 'user-created' => true])
+            ->get(route('usuarios.index'))
+            ->assertSee('data-user-created-dialog', false)
+            ->assertSee('Registro Exitoso!')
+            ->assertSee('data-redirect-url', false);
+    }
+
     public function test_update_allows_unchanged_unique_fields_and_edit_does_not_expose_password_hash(): void
     {
         $this->enableWrites();
@@ -935,6 +1034,35 @@ class UsersReadTest extends TestCase
         $user->assignRole($role);
 
         return $user;
+    }
+
+    private function createLegacyOnlyUser(int $legacyRoleId, int $plaza = 1): User
+    {
+        $number = DB::table('tbl_usuarios')->count() + 1;
+        $id = DB::table('tbl_usuarios')->insertGetId([
+            'Nombre' => 'Legacy '.$number,
+            'Apepat' => 'Apellido',
+            'Apemat' => 'Segundo',
+            'Edad' => 30,
+            'Sexo' => 'H',
+            'Email' => 'legacy'.$number.'@example.test',
+            'Usuario' => 'legacy'.$number,
+            'Password' => sha1('clave-de-prueba'),
+            'Hash' => 'HASH_NO_PUBLICAR',
+            'sha1_id' => 'SHA1_ID_NO_PUBLICAR',
+            'rol_id' => $legacyRoleId,
+            'plaza_id' => $plaza,
+        ]);
+
+        return User::query()->findOrFail($id);
+    }
+
+    private function createLoginReportTable(): void
+    {
+        Schema::create('tbl_reporte_ventas', function (Blueprint $table): void {
+            $table->date('Fecha');
+            $table->integer('plaza_id');
+        });
     }
 
     private function insertAccess(
