@@ -184,6 +184,11 @@ Spatie `web` correspondiente, devuelve 403 antes de crear sesión o bitácora.
 `SaveUser` conserva la sincronización atómica de altas y cambios explícitos de rol
 (sección 9).
 
+> **Compatibilidad temporal:** usar `tbl_usuarios.rol_id` para reconciliar
+> asignaciones Spatie solo existe mientras CodeIgniter y Laravel compartan la BD
+> legacy. Debe revisarse y retirarse o reemplazarse al migrar al esquema definitivo,
+> cuando `rol_id` y la base legacy dejen de ser la fuente autorizada.
+
 `UsersReadPermissionsSeeder` define esta matriz de **relaciones rol-permiso**:
 
 | Rol | Directorio (`users.directory.view`) | Bitácora (`access-log.view`) |
@@ -346,6 +351,11 @@ registra bitácora. Esto evita depender de un seeder manual por cada modificaci�
 legacy sin ampliar permisos de Usuarios. Una modificación hecha por Laravel ya
 sincroniza en su propia transacción; en el siguiente login también queda coherente
 si otro sistema la hubiera alterado después.
+
+Esta reconciliación desde `tbl_usuarios.rol_id` es un mecanismo temporal de
+compatibilidad con CodeIgniter, no la arquitectura de autorización objetivo. Se
+debe revisar expresamente al migrar al esquema definitivo y dejar de depender de
+la BD legacy.
 
 Las pruebas SQLite cubren los cinco roles creados sin pivot Spatie, un cambio de
 rol directo que representa CodeIgniter, IDs legacy inválidos, falta de un rol
