@@ -100,6 +100,11 @@ Los providers propios inspeccionados no agregan esas rutas ni un bypass de Gate.
 | `POST /Usuarios` | `auth:web` + policy `create`: `users.directory.view` y `users.create`. |
 | `GET /Usuarios/{user}/editar`, `PUT /Usuarios/{user}` | `auth:web` + policy `update`: `users.directory.view` y `users.update`; binding Eloquent por ID numérico. |
 | `GET /Usuarios/listaAccesos`, `GET /Usuarios/listaAccesos/export` | `auth:web` + `can:access-log.view`. |
+| `GET /Opciones` | `auth:web` + `can:configuration.view`; panel Configurar. |
+| `GET /Opciones/fechas`, `GET /Opciones/fechas/export` | `auth:web` + `can:configuration.upload-window.view`. |
+| `PUT /Opciones/fechas` | Además exige `configuration.upload-window.update`; valida y actualiza el único registro existente. |
+| `GET /Usuarios/notificaciones`, `GET /Usuarios/notificaciones/export` | `auth:web` + `can:configuration.notifications.view`; esta pantalla pertenece a Configurar. |
+| `PUT /Usuarios/notificaciones` | Además exige `configuration.notifications.update`; solo cambia la fecha del único registro existente. |
 
 Registro, recuperación/verificación/actualización de contraseña y perfil conservan
 controladores, vistas y/o rutas scaffold. **No son funcionalidades activas por el
@@ -474,7 +479,10 @@ Ejecución PHP 8.5.11 / PHPUnit 12.5.39 en imagen existente
 `italian-cloud-php:8.5`, `docker run --rm --network none`. Se forzó SQLite y caches
 de arranque/vistas en `/tmp`, sin arrancar servicios ni montar datos MySQL.
 Comando de suite: `php vendor/bin/phpunit --filter UsersReadTest --do-not-cache-result`.
-Resultado actual: **39 tests / 300 assertions**, todos pasan.
+Primera entrega: **39 tests / 300 assertions**. La corrección posterior del login
+amplió Usuarios a **48 tests / 352 assertions**. En la entrega de Configurar se
+ejecutaron de nuevo Usuarios y Configurar juntos: **68 tests / 622 assertions**, todos
+pasan (detalle de la validación actual en la sección 20).
 `composer validate --strict --no-check-publish` y
 `composer check-platform-reqs --lock` pasan. Vite compila con
 `npm run build -- --outDir /tmp/italian-users-vite-build`, sin cambiar artefactos
@@ -570,7 +578,7 @@ Confirmar escenarios de cambio de día y de corte antes de declarar paridad.
 | Integraciones Laravel Excel/Dompdf instaladas y Laravel 13.36.0. | Ausentes en la auditoría inicial; confirmadas tras traer `66dc03df`. APIs de Usuarios migradas en esta tarea. |
 | Matriz de permisos como acceso efectivo de todos los usuarios. | Define relaciones de roles; permisos directos y estado de la BD pueden alterar el acceso. |
 | Paridad completa de Copy/exportaciones/UI. | Hay diferencias concretas de alcance, acciones, interacción y validación pendiente. |
-| Tests pasando como garantía actual y fallos scaffold conocidos. | La auditoría inicial no ejecutó tests; ahora hay 39 tests / 300 aserciones de Usuarios en aislamiento. Scaffold ajeno sigue sin ejecutarse. |
+| Tests pasando como garantía actual y fallos scaffold conocidos. | La auditoría inicial no ejecutó tests; Usuarios y Configurar pasan juntos con 68 tests / 622 aserciones en aislamiento (sección 20). Scaffold ajeno sigue sin ejecutarse. |
 | Preparación automática e instalación de Boost en las instrucciones locales. | Guía aclarada para respetar el alcance: la auditoría estática no requiere instalar herramientas, dependencias ni ejecutar servicios. |
 | «90 %» de certeza sobre el nombre usuarios. | Eliminado; diseño formal pendiente. |
 | Aproximadamente 26 vistas con inicializadores. | 28 archivos PHP contienen `.DataTable(`; conteo textual, no inventario de tablas activas. |
@@ -710,3 +718,161 @@ Para activar alta/edición en esa instalación, una vez revisada su conexión lo
 el seeder específico es `UsersWritePermissionsSeeder`. Conserva los permisos de
 lectura ya provisionados y requiere el rol web `root` existente. No ejecutar
 DatabaseSeeder ni reconstruir/importar la base para activar estos permisos.
+
+## 20. Configurar (Gerente): recorrido comprobado e implementación
+
+### Alcance y fuentes
+
+El panel legacy `Opciones::index()` sirve
+`administrador/opciones/panel_opciones.php`, cuyas dos tarjetas abren
+`Opciones/fechas` (Corte & DLC) y `Usuarios/notificaciones` (Notificaciones).
+Ambas subpantallas forman parte de esta entrega; no son el módulo independiente
+«Mis Notificaciones» de Inicio. Se inspeccionaron `Opciones.php`,
+`Mdl_opciones.php`, los métodos relacionados de `Usuarios.php`/`Mdl_usuarios.php`,
+las tres vistas, `Backend_lib`, `Mdl_backend`, `assets/js/tables.js`, los consumidores
+de Inicio/Ventas/Inventario y exclusivamente las secciones relevantes del dump.
+
+### Estructura, datos y carácter global
+
+El archivo `italian-laravel/italian.sql`, leído sin importarlo, declara:
+
+| Tabla | Estructura relevante | Filas presentes en el dump |
+| --- | --- | --- |
+| `tbl_rango_archivos` | `id TINYINT` firmado, PK/autoincrement; `Numero_Dias TINYINT` firmado NOT NULL; `Descripcion VARCHAR(50)` NOT NULL. | Una: ID 1, días 1, «Rango de Fechas para DLC & Corte atrasados». |
+| `tbl_notificaciones` | `id TINYINT` firmado, PK/autoincrement; `Fecha DATE` NOT NULL; `Descripcion VARCHAR(50)` NOT NULL. | Una: ID 1, fecha `2019-01-01`, «Sistema de Notificaciones Corte y DLC». |
+
+Ninguna tiene plaza, usuario, tipo de configuración ni FKs declaradas hacia ella.
+Los lectores relevantes toman la primera fila sin un selector de ámbito. Esto
+acredita un ajuste global en el recorrido y el dump inspeccionados; **no demuestra
+cuántas filas hay en producción ni impone unicidad en el esquema**.
+
+`Opciones::actualizarRangoDias()` exige AJAX, recibe `numero_dias_valor`, acepta
+`>= 1` y llama a `actualizarRangoArchivos()`: un UPDATE **sin WHERE** de
+`Numero_Dias`, dentro de una transacción. Devuelve 1/0 para éxito/error y 2 para
+valor menor a 1. Aunque la vista recibe el ID al abrir el modal, el servidor no
+lo usa. La tabla lista Días, Descripción y Editar; DataTables `tbl_datos` añade
+Excel/PDF/Copy, búsqueda, orden y 80 filas por página. Éxito: aviso superior derecho
+«Rango correctamente actualizado!!!», sin OK, temporizado a 1500 ms.
+
+`Usuarios::notificaciones()` consulta todas las filas. Al enviar `actualizar`,
+`actualizarFechaNotificacion()` ejecuta un UPDATE **sin WHERE** de `Fecha`.
+**No crea notificaciones, no cambia su descripción y no envía mensajes**. La vista
+muestra un formulario de fecha y la tabla # / Fecha Inicio / Descripción, con las
+mismas herramientas DataTables. No se encontró alta o eliminación en este recorrido.
+
+### Dependencias preservadas y discrepancia pendiente
+
+- `Mdl_opciones::getNumeroDias()` devuelve la primera fila como `Dias`.
+  `Inventario` lo usa al validar antigüedad de DLC (fallback 1 sin fila).
+- `Ventas::store2()` consulta la fila, pero si existe fuerza **30 días** en vez
+  de leer `Dias`; sin fila usa 1. Su mensaje menciona otro plazo. La migración de
+  Configurar guarda el valor; **no corrige Ventas ni decide qué plazo debe usar**.
+  Esa regla debe acordarse con Javi antes de migrar el consumidor.
+- `Inicio::reasignar()` lee la primera `Fecha` de `tbl_notificaciones` y la pasa
+  a las consultas de cortes/DLC faltantes. Actualizar esa fecha conserva el dato
+  que consume CodeIgniter si comparte efectivamente la BD con Laravel. No ejecuta
+  el sistema de avisos ni implica haber migrado su presentación en Inicio Laravel.
+
+### Permisos
+
+El dump contiene los menús 209 `Opciones`, 210 `Opciones/fechas`, 211
+`Opciones/actualizarRangoDias` y 94 `Usuarios/notificaciones`. Gerente (`rol_id=3`)
+tiene Leer=1 en los cuatro; Dueño tiene Leer=0 en 94 y no se encontraron concesiones
+para los otros roles en esos cuatro menús. `Backend_lib` exige sesión, menú y
+Leer; `Mdl_backend` resuelve el enlace mediante LIKE, sin convertir esa peculiaridad
+en el mecanismo Laravel. Esto describe el dump y no certifica permisos desplegados.
+
+`ConfigurationPermissionsSeeder` provisiona cinco capacidades `web`, asignadas
+inicialmente solo a `root`:
+
+- `configuration.view` (panel).
+- `configuration.upload-window.view` y `configuration.upload-window.update`.
+- `configuration.notifications.view` y `configuration.notifications.update`.
+
+Rutas y Form Requests comprueban capacidades; guardar requiere lectura y escritura
+de la subpantalla. Los permisos de Usuarios son independientes: poder configurar
+Notificaciones no concede acceso a su directorio. No hay bypass Dueño/superadmin
+ni autorización por `rol_id`. La navegación usa esos mismos permisos. No se exige
+el permiso del panel como condición adicional de cada subpantalla, pues legacy
+controlaba cada URL por separado. Concesiones directas Spatie siguen siendo
+efectivas. El seeder conserva permisos ajenos/directos y es idempotente; restablece
+las relaciones de sus cinco permisos a `root`, como los seeders del proyecto.
+
+**Activación:** solo se ejecutó este seeder en SQLite efímera. En una instalación
+existente, revisar primero la conexión/destino y provisionar después
+`ConfigurationPermissionsSeeder` con el rol `root` ya existente. No ejecutar
+DatabaseSeeder, migraciones ni una importación del dump para activar el módulo.
+La futura pantalla de Permisos debe definir cómo se coordinan decisiones
+administrativas con seeders que restablecen matrices iniciales.
+
+### Implementación y diferencias intencionales
+
+- `ConfigurationController`, tres Form Requests y consultas/escrituras
+  encapsuladas en `App\Queries\ConfigurationSettings`; no se dispersan las tablas
+  temporales por controladores/vistas. Se reutiliza el layout autenticado y su
+  resolución de navegación. Rutas exactas en la sección 4.
+- **Solo se guarda con exactamente una fila y un ID coincidente con el formulario.**
+  La comprobación se repite sin filtros de búsqueda, bajo transacción y
+  `lockForUpdate`; el UPDATE usa WHERE por ID. Con cero/múltiples filas o ID
+  sustituido entre lectura y envío no hay escrituras, inserciones ni éxito falso.
+  Se listan los datos y se deshabilita la edición con una explicación. Si una
+  instalación tiene varias filas, queda pendiente decidir su significado y alcance:
+  no se elige una arbitrariamente ni se replica el UPDATE masivo legacy.
+- Días: entero 1–127, por el límite del TINYINT firmado, con error en español.
+  Fecha: formato real `Y-m-d` y rango representable por MySQL DATE
+  (`1000-01-01` a `9999-12-31`); sin prohibiciones inventadas para pasado/futuro.
+  Solo se escriben Numero_Dias o Fecha, nunca Descripcion ni IDs.
+- Lectura por GET y mutación por PUT con CSRF, patrón POST/redirect/GET y flash
+  de éxito después de guardar. El POST AJAX `Opciones/actualizarRangoDias` se
+  sustituye por PUT `/Opciones/fechas`; no se agregó un alias AJAX antiguo.
+- Panel, títulos, tarjetas blancas, iconos, tablas y modal reproducen la estructura
+  legacy con Blade/CSS/JS propios. Se copiaron únicamente `calendar.png` y
+  `notification.png` desde assets legacy. Sin jQuery/AdminLTE/Bootstrap/SweetAlert.
+  El aviso de rango se cierra automáticamente a 1500 ms; Notificaciones añade una
+  confirmación explícita tras guardar. Nunca se muestra éxito con errores.
+- Búsqueda por Enter, columnas de ordenamiento cerradas, paginación servidor de 80,
+  exportación de todos los resultados filtrados/ordenados y Copy de la página
+  visible, siguiendo el patrón de Usuarios. Excel/PDF conservan título «Datos»;
+  se excluye Editar de los datos exportados, en vez de exportar el control.
+- El escritor genérico existente se extrajo a `TabularSpreadsheet` y el PDF a
+  `exports.table`; `UsersReadSpreadsheet` hereda el mismo escritor y `usuarios.pdf`
+  incluye la misma plantilla compartida. No se alteró el contrato de Usuarios;
+  se ejecutó su suite completa como comprobación de regresión. XLSX usa el binder
+  seguro existente, PDF escapa valores y deshabilita recursos remotos/PHP/JS.
+- Envío duplicado bloqueado en JS, diálogo nativo con Escape/cierre, errores
+  anunciados y soporte de reducción de movimiento; controles restaurados al
+  regresar mediante la caché de navegación del navegador.
+
+### Validación ejecutada y límites
+
+PHP 8.5.11 / PHPUnit 12.5.39, imagen existente `italian-cloud-php:8.5` con
+`--network none`, caches de Laravel/vistas en `/tmp`. Se crearon exclusivamente
+tablas mínimas y fixtures sintéticos en SQLite `:memory:`; no se montó ni consultó
+MySQL, no se importó italian.sql ni se arrancaron los servicios de aplicación/BD.
+
+`ConfigurationTest` + `UsersReadTest`: **68 tests / 622 aserciones**, todos pasan.
+Cobertura: cinco roles, invitados, permisos de lectura/escritura independientes,
+navegación, validación y límites, campos preservados, no creación, cardinalidad
+cero/múltiple, IDs obsoletos, búsqueda literal, paginación 80, descarga XLSX real
+con todas las filas/filtros/orden y fórmulas como texto, PDF real y seeders.
+Las 48 pruebas de Usuarios siguen pasando tras extraer los exportadores compartidos.
+
+Vite compila con `npm run build -- --outDir /tmp/italian-configuration-vite-build`;
+no se modificaron artefactos compilados versionados. Pint en PHP cambiado,
+`node --check` en JS y `git diff --check` pasan. La configuración Vite solo añade
+los dos entrypoints del módulo; no se modificó infraestructura.
+
+Revisión visual/interactiva en Chromium mediante Playwright sobre HTML renderizado
+por Laravel con SQLite sintética: panel y assets, modal abierto/cerrado/Escape,
+validación/reapertura, vista móvil 390 y escritorio 1366, ausencia de overflow,
+prevención de doble envío, restauración al volver y cierre automático del éxito;
+sin errores JS. Harness externo: 1 test / 7 aserciones. Capturas temporales
+en `/tmp/italian-configuration-visual/`, inspeccionadas y contrastadas con las
+vistas fuente/captura del PDF Scrum; no son una ejecución E2E de CodeIgniter.
+
+Pendiente: verificar cardinalidad y datos reales, aprovisionamiento efectivo de
+permisos, collations/DATE/TINYINT y locks/concurrencia en MySQL, sesiones/CSRF en
+una instancia completa y efectos visibles en Inicio/consumidores legacy con una
+BD realmente compartida. Definir el plazo de Ventas y qué hacer ante múltiples
+filas. No se migraron Inicio, Ventas, DLC, Eliminar ni funcionalidades adicionales;
+no se cambió autenticación, SHA-1, esquema, SQL, dependencias o AGENTS.md.

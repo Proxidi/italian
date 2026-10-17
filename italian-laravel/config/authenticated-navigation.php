@@ -100,6 +100,14 @@ $destinations['usuarios.accesos'] = [
     'permission' => 'access-log.view',
 ];
 
+foreach ([
+    'configuracion.panel' => ['configuration.index', 'configuration.view'],
+    'configuracion.fechas' => ['configuration.dates', 'configuration.upload-window.view'],
+    'configuracion.notificaciones' => ['configuration.notifications', 'configuration.notifications.view'],
+] as $key => [$route, $permission]) {
+    $destinations[$key] = [...$destinations[$key], 'route' => $route, 'permission' => $permission];
+}
+
 $item = static fn (string $label, string $destination, string $icon = 'circle'): array => [
     'label' => $label,
     'destination' => $destination,

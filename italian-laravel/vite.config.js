@@ -13,6 +13,8 @@ export default defineConfig({
                 'resources/js/authenticated.js',
                 'resources/css/users-read.css',
                 'resources/js/users-read.js',
+                'resources/css/configuration.css',
+                'resources/js/configuration.js',
             ],
             refresh: true,
         }),

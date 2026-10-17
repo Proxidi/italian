@@ -3,6 +3,7 @@
 // routes/web.php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\ConfigurationController;
 use App\Http\Controllers\UsersReadController;
 use App\Http\Controllers\UsersWriteController;
 use Illuminate\Support\Facades\Route;
@@ -32,6 +33,27 @@ Route::middleware('auth:web')->group(function () {
     // El formulario de cierre de sesión debe incluir @csrf.
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
+
+    Route::get('/Opciones', [ConfigurationController::class, 'index'])
+        ->middleware('can:configuration.view')->name('configuration.index');
+
+    Route::middleware('can:configuration.upload-window.view')->group(function () {
+        Route::get('/Opciones/fechas', [ConfigurationController::class, 'dates'])
+            ->defaults('configuration_permission', 'configuration.upload-window.view')->name('configuration.dates');
+        Route::get('/Opciones/fechas/export', [ConfigurationController::class, 'exportDates'])
+            ->defaults('configuration_permission', 'configuration.upload-window.view')->name('configuration.dates.export');
+        Route::put('/Opciones/fechas', [ConfigurationController::class, 'updateDates'])
+            ->middleware('can:configuration.upload-window.update')->name('configuration.dates.update');
+    });
+
+    Route::middleware('can:configuration.notifications.view')->group(function () {
+        Route::get('/Usuarios/notificaciones', [ConfigurationController::class, 'notifications'])
+            ->defaults('configuration_permission', 'configuration.notifications.view')->name('configuration.notifications');
+        Route::get('/Usuarios/notificaciones/export', [ConfigurationController::class, 'exportNotifications'])
+            ->defaults('configuration_permission', 'configuration.notifications.view')->name('configuration.notifications.export');
+        Route::put('/Usuarios/notificaciones', [ConfigurationController::class, 'updateNotifications'])
+            ->middleware('can:configuration.notifications.update')->name('configuration.notifications.update');
+    });
 
     Route::middleware('can:users.directory.view')->group(function () {
         Route::get('/Usuarios', [UsersReadController::class, 'directory'])
