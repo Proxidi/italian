@@ -2,6 +2,30 @@
 
 All notable changes of the PHPUnit 12.5 release series are documented in this file using the [Keep a CHANGELOG](https://keepachangelog.com/) principles.
 
+## [12.5.39] - 2026-10-12
+
+### Fixed
+
+* [#7053](https://github.com/sebastianbergmann/phpunit/issues/7053): Extensions loaded using `-d extension` or `-d zend_extension` are not loaded in child processes
+* The status of a test whose mock object raises an exception in its destructor is success although the test is reported as errored, so `tearDown()` sees the wrong status and code coverage records the test as successful
+* Named arguments passed to `with()` were matched by position instead of by name, so an expectation such as `->with(b: 7)` compared the expected value with the first parameter of the method and the parameter named `$b` was not checked
+* When code coverage is collected and no code coverage driver is available in a child process, a test that is run in process isolation errors and a PHPT test fails instead of a warning being emitted
+
+## [12.5.38] - 2026-10-05
+
+### Changed
+
+* The Software Bill of Materials (SBOM) embedded in the PHAR now uses CycloneDX 1.7 and provides the NTIA minimum elements as well as the data fields that BSI TR-03183-2 (version 2.1.0) requires for logical and identified components, including component creators, original, distribution and effective licences, source code URIs, and the PHP runtime and its extensions as external components
+
+### Fixed
+
+* `setUpBeforeClass()` and `tearDownAfterClass()` were run twice for a test class that is the only test class in a test suite of the XML configuration file that has the name of that test class
+* Tests could not be run in process isolation when the path of the bootstrap script, the test file, or the directory for temporary files contained a single quote
+* A test that is run in process isolation aborts the test run when its result cannot be unserialized, for instance because it returns an object that holds a test double
+* Issues that are listed in the baseline are not ignored for tests that are run in a separate process
+* Arguments in the `--ARGS--` section of a PHPT test that start with `-` were interpreted by PHP instead of being passed to the test when the test also has a `--STDIN--` section
+* Recording the tests that passed in a child process copied all tests that had passed so far, which made running many tests in process isolation increasingly slow
+
 ## [12.5.37] - 2026-09-29
 
 ### Fixed
@@ -315,6 +339,8 @@ All notable changes of the PHPUnit 12.5 release series are documented in this fi
 * [#6380](https://github.com/sebastianbergmann/phpunit/pull/6380): Allow `Throwable` in `expectExceptionObject()`
 * A PHPUnit notice is now emitted for test methods that create a mock object but do not configure an expectation for it
 
+[12.5.39]: https://github.com/sebastianbergmann/phpunit/compare/12.5.38...12.5.39
+[12.5.38]: https://github.com/sebastianbergmann/phpunit/compare/12.5.37...12.5.38
 [12.5.37]: https://github.com/sebastianbergmann/phpunit/compare/12.5.36...12.5.37
 [12.5.36]: https://github.com/sebastianbergmann/phpunit/compare/12.5.35...12.5.36
 [12.5.35]: https://github.com/sebastianbergmann/phpunit/compare/12.5.34...12.5.35

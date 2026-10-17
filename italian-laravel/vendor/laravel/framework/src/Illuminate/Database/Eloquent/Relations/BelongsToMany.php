@@ -761,6 +761,25 @@ class BelongsToMany extends Relation
     }
 
     /**
+     * Create a related record matching the attributes, or increment the existing record.
+     *
+     * @param  array  $attributes
+     * @param  string  $column
+     * @param  int|float  $default
+     * @param  int|float  $step
+     * @param  array  $extra
+     * @return TRelatedModel&object{pivot: TPivotModel}
+     */
+    public function incrementOrCreate(array $attributes, string $column = 'count', $default = 1, $step = 1, array $extra = [])
+    {
+        return tap($this->firstOrCreate($attributes, array_merge($extra, [$column => $default])), function ($instance) use ($column, $step, $extra) {
+            if (! $instance->wasRecentlyCreated) {
+                $instance->increment($column, $step, $extra);
+            }
+        });
+    }
+
+    /**
      * Find a related model by its primary key.
      *
      * @param  mixed  $id
@@ -958,7 +977,11 @@ class BelongsToMany extends Relation
         return $callback();
     }
 
-    /** @inheritDoc */
+    /**
+     * Get the results of the relationship.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, TRelatedModel&object{pivot: TPivotModel}>
+     */
     public function getResults()
     {
         return ! is_null($this->parent->{$this->parentKey})
@@ -966,7 +989,12 @@ class BelongsToMany extends Relation
             : $this->related->newCollection();
     }
 
-    /** @inheritDoc */
+    /**
+     * Execute the query as a "select" statement.
+     *
+     * @param  array  $columns
+     * @return \Illuminate\Database\Eloquent\Collection<int, TRelatedModel&object{pivot: TPivotModel}>
+     */
     public function get($columns = ['*'])
     {
         // First we'll add the proper select columns onto the query so it is run with
@@ -1187,6 +1215,28 @@ class BelongsToMany extends Relation
                 }
             }
         });
+    }
+
+    /**
+     * Run a map over each item while chunking.
+     *
+     * @template TReturn
+     *
+     * @param  callable(TRelatedModel&object{pivot: TPivotModel}): TReturn  $callback
+     * @param  int  $count
+     * @return \Illuminate\Support\Collection<int, TReturn>
+     */
+    public function chunkMap(callable $callback, $count = 1000)
+    {
+        $collection = new BaseCollection;
+
+        $this->chunk($count, function ($items) use ($collection, $callback) {
+            $items->each(function ($item) use ($collection, $callback) {
+                $collection->push($callback($item));
+            });
+        });
+
+        return $collection;
     }
 
     /**
