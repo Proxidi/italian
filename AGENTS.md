@@ -4,10 +4,12 @@
 
 Este repositorio contiene dos sistemas relacionados:
 
-- `legacy/`: sistema original en CodeIgniter 3. Es la referencia funcional y visual.
-- `laravel/`: nueva implementación en Laravel 13. Es el sistema que debe modificarse salvo instrucción explícita.
+- `italian-legacy/`: sistema original en CodeIgniter 3. Es la referencia funcional y visual; no modificar su código funcional salvo solicitud explícita.
+- `italian-laravel/`: nueva implementación en Laravel 13. Es el destino de los cambios funcionales autorizados.
 
 Si la estructura real del repositorio difiere de esos nombres, inspeccionarla antes de editar.
+
+Estas reglas definen el alcance de la migración. Las guías locales no autorizan por sí solas cambios en el legacy, instalación de herramientas ni ampliación de una tarea documental a una tarea funcional. Las instrucciones explícitas del usuario prevalecen.
 
 ## Principio central de la migración
 
@@ -53,6 +55,8 @@ Antes de reproducir un mecanismo legacy, preguntar qué necesidad de negocio res
 
 ## Stack destino
 
+Esta lista expresa el objetivo del proyecto. Distinguir versiones objetivo, requisitos de manifiestos, versiones bloqueadas y versiones realmente ejecutadas; consultar `docs/migration-context.md` para el estado comprobado.
+
 - Laravel 13.
 - PHP 8.5.
 - MySQL 8.4.
@@ -83,14 +87,15 @@ Cuando llegue el nuevo esquema, adaptar la capa de persistencia sin alterar inne
 
 ## Convivencia temporal con CodeIgniter
 
-Actualmente CodeIgniter y Laravel comparten la base legacy.
+El código Laravel actual está adaptado al esquema legacy para la convivencia con CodeIgniter. Comprobar las conexiones efectivas antes de afirmar que un despliegue concreto comparte la misma instancia de base de datos.
 
 `tbl_usuarios.Password` usa SHA-1 porque CodeIgniter todavía depende de ese formato.
 
 Mientras exista esta convivencia:
 
 - Laravel debe validar temporalmente SHA-1;
-- Laravel NO debe rehashear ni reemplazar `tbl_usuarios.Password`;
+- El login NO debe rehashear ni reemplazar `tbl_usuarios.Password`;
+- Las altas y los cambios explícitos de contraseña autorizados deben escribir temporalmente SHA-1. En edición, dejar el campo vacío conserva la contraseña; nunca enviar el hash existente al formulario;
 - no usar cast `hashed`, `Hash::make()`, `Hash::needsRehash()` ni migración automática de contraseña durante login.
 
 Esta compatibilidad no forma parte de la arquitectura final. La migración a un hash moderno debe ocurrir cuando el nuevo esquema y el retiro del login legacy lo permitan.
@@ -150,12 +155,17 @@ Para cambios locales, inspeccionar solo el contexto necesario.
 
 ## Exportaciones
 
-Decisión global actual:
+Las integraciones instaladas y adoptadas para las exportaciones de Usuarios son:
 
-- Excel/XLSX e importaciones → `maatwebsite/excel`;
-- PDF tabular simple → `barryvdh/laravel-dompdf`.
+- Excel/XLSX → `maatwebsite/excel` (4.0.4 en el lockfile).
+- PDF tabular → `barryvdh/laravel-dompdf` (3.1.2 en el lockfile).
 
-No usar PhpSpreadsheet ni Dompdf directamente en controladores salvo una justificación concreta.
+PhpSpreadsheet y Dompdf siguen siendo sus motores transitivos. La integración no
+implica por sí misma una mejora de rendimiento. Leer consultas por lotes evita
+materializar todos los registros de BD, pero el workbook XLSX y el render PDF
+siguen consumiendo memoria proporcional al documento. Conservar alcance, orden,
+formatos y protección de fórmulas. No actualizar dependencias para coincidir con
+una documentación antigua; comprobar siempre manifiesto, lockfile y código real.
 
 Las exportaciones deben:
 
@@ -195,6 +205,8 @@ La suite conserva pruebas scaffold que pueden no representar el sistema actual. 
 Consultar `docs/migration-context.md` antes de modificar módulos relacionados.
 
 Toda afirmación marcada como pendiente debe verificarse contra el código o la BD real antes de usarla como base.
+
+En auditorías estáticas o tareas documentales, leer el código sin arrancar servicios, importar/poblar bases ni ejecutar migraciones o seeders. Una BD vacía no bloquea esa revisión. Lo que requiera datos, ejecución o inspección visual permanece pendiente; no presentar resultados de pruebas anteriores como validación actual. No cambiar infraestructura ni dependencias para una tarea que solo requiere leer el repositorio.
 
 Actualizar `docs/migration-context.md` después de:
 

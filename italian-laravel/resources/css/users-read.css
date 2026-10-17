@@ -401,3 +401,27 @@
         margin-left: auto;
     }
 }
+
+.users-form { padding: 10px; }
+.users-form__field { display: flex; flex-direction: column; gap: 5px; margin: 0 0 15px; }
+.users-form__field > label, .users-form__label { font-weight: 600; }
+.users-form__field .users-read__input { width: 100%; max-width: none; min-height: 34px; }
+.users-form__radios { display: flex; align-items: center; gap: 12px; min-height: 34px; }
+.users-form__radios label { font-weight: 400; }
+.users-form__error { color: #a94442; font-size: 13px; }
+.users-form__success { padding: 15px; background: #dff0d8; color: #3c763d; }
+.users-dialog { width: min(600px, calc(100% - 30px)); max-height: calc(100vh - 40px); padding: 0; border: 1px solid #ddd; border-radius: 4px; color: #333; background: #fff; }
+.users-dialog::backdrop { background: rgb(0 0 0 / 50%); }
+.users-dialog__header, .users-dialog__footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 15px; }
+.users-dialog__header { border-bottom: 1px solid #e5e5e5; }
+.users-dialog__header h2 { margin: 0; font-size: 18px; font-weight: 500; }
+.users-dialog__header button { border: 0; background: none; font-size: 24px; cursor: pointer; }
+.users-dialog .users-form { padding: 15px; }
+.users-dialog__footer { justify-content: flex-end; border-top: 1px solid #e5e5e5; padding: 15px 0 0; }
+
+.users-read__button--default { color: #444; background: #fff; border-color: #ddd; }
+@media (min-width: 561px) {
+    .users-dialog .users-form__field { display: grid; grid-template-columns: 25% minmax(0, 1fr); column-gap: 12px; }
+    .users-dialog .users-form__field > label, .users-dialog .users-form__label { text-align: right; line-height: 34px; }
+    .users-dialog .users-form__error, .users-dialog .users-form__field > small { grid-column: 2; }
+}

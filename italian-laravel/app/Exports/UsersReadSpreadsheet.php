@@ -2,103 +2,66 @@
 
 namespace App\Exports;
 
+use Generator;
 use Illuminate\Database\Query\Builder;
+use Maatwebsite\Excel\Concerns\FromGenerator;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithCustomValueBinder;
+use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Concerns\WithProperties;
+use Maatwebsite\Excel\Concerns\WithTitle;
+use Maatwebsite\Excel\DefaultValueBinder;
+use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Cell\Cell;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class UsersReadSpreadsheet
+class UsersReadSpreadsheet extends DefaultValueBinder implements FromGenerator, ShouldAutoSize, WithCustomValueBinder, WithEvents, WithProperties, WithTitle
 {
-    public function download(
-        Builder $query,
-        array $columns,
-        string $title,
-        string $filename,
-    ): StreamedResponse {
-        return response()->streamDownload(
-            function () use ($query, $columns, $title): void {
-                $spreadsheet = new Spreadsheet();
+    public function __construct(private Builder $query, private array $columns, private string $heading) {}
 
-                try {
-                    $spreadsheet->getProperties()
-                        ->setCreator('The Italian Coffee Company')
-                        ->setTitle($title);
+    public function generator(): Generator
+    {
+        yield [$this->heading];
+        yield [''];
+        yield array_column($this->columns, 'label');
 
-                    $sheet = $spreadsheet->getActiveSheet();
-                    $sheet->setTitle('Listado');
+        // Bounded DB batches, preserving all filters and the requested ordering.
+        // The XLSX workbook itself still requires memory proportional to its cells.
+        foreach ((clone $this->query)->lazy(500) as $record) {
+            yield array_map(fn (array $column): string => (string) ($record->{$column['field']} ?? ''), $this->columns);
+        }
+    }
 
-                    $sheet->setCellValueExplicit(
-                        'A1',
-                        $title,
-                        DataType::TYPE_STRING,
-                    );
+    public function bindValue(Cell $cell, mixed $value): bool
+    {
+        // Text remains text, including formula-looking values and leading zeroes.
+        $cell->setValueExplicit((string) $value, DataType::TYPE_STRING);
 
-                    $lastColumn = count($columns);
+        return true;
+    }
 
-                    $sheet->mergeCells([1, 1, $lastColumn, 1]);
-                    $sheet->getStyle('A1')->getFont()
-                        ->setBold(true)
-                        ->setSize(16);
+    public function title(): string
+    {
+        return 'Listado';
+    }
 
-                    $columnNumber = 1;
+    public function properties(): array
+    {
+        return ['creator' => 'The Italian Coffee Company', 'title' => $this->heading];
+    }
 
-                    foreach ($columns as $column) {
-                        $sheet->setCellValueExplicit(
-                            [$columnNumber, 3],
-                            $column['label'],
-                            DataType::TYPE_STRING,
-                        );
-
-                        $sheet->getColumnDimensionByColumn($columnNumber)
-                            ->setAutoSize(true);
-
-                        $columnNumber++;
-                    }
-
-                    $sheet->getStyle([1, 3, $lastColumn, 3])
-                        ->getFont()
-                        ->setBold(true);
-
-                    $rowNumber = 4;
-
-                    foreach ($query->cursor() as $record) {
-                        $columnNumber = 1;
-
-                        foreach ($columns as $column) {
-                            $sheet->setCellValueExplicit(
-                                [$columnNumber, $rowNumber],
-                                (string) ($record->{$column['field']} ?? ''),
-                                DataType::TYPE_STRING,
-                            );
-
-                            $columnNumber++;
-                        }
-
-                        $rowNumber++;
-                    }
-
-                    $sheet->freezePane('A4');
-
-                    if ($rowNumber > 4) {
-                        $sheet->setAutoFilter([
-                            1,
-                            3,
-                            $lastColumn,
-                            $rowNumber - 1,
-                        ]);
-                    }
-
-                    (new Xlsx($spreadsheet))->save('php://output');
-                } finally {
-                    $spreadsheet->disconnectWorksheets();
-                }
-            },
-            $filename,
-            [
-                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'Cache-Control' => 'private, no-store',
-            ],
-        );
+    public function registerEvents(): array
+    {
+        return [AfterSheet::class => function (AfterSheet $event): void {
+            $sheet = $event->sheet->getDelegate();
+            $lastColumn = count($this->columns);
+            $sheet->mergeCells([1, 1, $lastColumn, 1]);
+            $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
+            $sheet->getStyle([1, 3, $lastColumn, 3])->getFont()->setBold(true);
+            $sheet->freezePane('A4');
+            if ($sheet->getHighestRow() > 3) {
+                $sheet->setAutoFilter([1, 3, $lastColumn, $sheet->getHighestRow()]);
+            }
+        }];
     }
 }

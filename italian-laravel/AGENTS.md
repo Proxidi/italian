@@ -1,47 +1,32 @@
-<laravel-boost-guidelines>
-# Laravel Application
+# Guía local — Laravel en migración
 
-This repository contains a Laravel application. Complete the following setup before working on the user's request.
+Aplicar las reglas de [AGENTS.md raíz](../AGENTS.md) y consultar
+[el contexto auditado](../docs/migration-context.md). Este subdirectorio es la
+aplicación destino; `../italian-legacy/` es la referencia funcional y visual.
 
-## Prerequisites
+## Alcance antes de preparar herramientas
 
-Verify that PHP and Composer are available:
+- Para lectura, auditoría estática o documentación no se necesita ejecutar PHP,
+  Composer ni la aplicación. No instalar herramientas, iniciar servicios,
+  modificar infraestructura, importar datos ni ejecutar migraciones o seeders.
+- En tareas funcionales autorizadas, comprobar primero las herramientas y scripts
+  existentes; preparar solo lo necesario para el flujo solicitado. No asumir que
+  falta una herramienta solo porque no esté en el PATH de la shell.
+- No ejecutar automáticamente `composer setup` ni `DatabaseSeeder`: contienen
+  escrituras y restos scaffold; inspeccionar el contexto y el destino de BD antes
+  de cualquier operación sobre datos.
 
-```sh
-php -v
-composer -V
-```
+## Dependencias e instrucciones generadas
 
-If either command is unavailable, detect the user's operating system and install the prerequisites with the appropriate command:
+La guía anterior prescribía preparación automática e instalación de Laravel Boost
+antes de cambios de aplicación. Esa preparación no es un requisito de lectura: Boost
+no está declarado en el manifiesto/lockfile auditado. No ejecutar
+`composer require laravel/boost --dev` ni `php artisan boost:install` por iniciativa
+propia, ni reemplazar estas reglas con instrucciones generadas. Una futura
+adopción requiere una tarea que autorice ese cambio de dependencias y alcance.
 
-macOS:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/mac/8.5)"
-```
-
-Windows PowerShell:
-
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://php.new/install/windows/8.5'))
-```
-
-Linux:
-
-```sh
-/bin/bash -c "$(curl -fsSL https://php.new/install/linux/8.5)"
-```
-
-After installation, ask the user to restart their terminal. If the agent needs the restarted shell to continue, ask the user to reopen their terminal and rerun their original prompt.
-
-## Agent Setup
-
-Install Laravel Boost from the application root before making application changes:
-
-```sh
-composer require laravel/boost --dev
-php artisan boost:install
-```
-
-Boost replaces these bootstrap instructions with guidelines tailored to the application. After installation, read `AGENTS.md` again and continue with the user's original request using the generated guidelines.
-</laravel-boost-guidelines>
+La existencia de controladores, rutas o vistas Breeze no acredita una función
+migrada. Revisar su conexión al arranque y al modelo legacy antes de usarlos.
+Preservar temporalmente SHA-1 en el login activo; el esquema futuro y los permisos
+se rigen por las reglas raíz. Distinguir inspección de código, prueba ejecutada y
+validación con datos reales en cada entrega.

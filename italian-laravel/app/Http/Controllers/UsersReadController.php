@@ -2,17 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Users\SaveUser;
+use App\Exports\UsersReadSpreadsheet;
 use App\Http\Requests\Users\AccessLogRequest;
 use App\Http\Requests\Users\DirectoryRequest;
 use App\Models\User;
 use App\Support\AuthenticatedNavigation;
-use App\Exports\UsersReadSpreadsheet;
-use Dompdf\Dompdf;
-use Dompdf\Options;
-use Illuminate\Http\Response;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UsersReadController extends Controller
@@ -87,7 +89,10 @@ class UsersReadController extends Controller
             'filters' => $filters,
             'indexRoute' => 'usuarios.index',
             'exportRoute' => 'usuarios.export',
+            'roles' => DB::table('tbl_roles')->whereIn('id', array_keys(SaveUser::ROLES))->get(['id', 'Nombre']),
+            'plazas' => DB::table('tbl_plazas')->get(['id', 'Nombre']),
             'records' => $this->directoryQuery($filters)
+                ->addSelect('tbl_usuarios.id')
                 ->paginate(100)
                 ->appends($filters),
         ]);
@@ -115,7 +120,7 @@ class UsersReadController extends Controller
 
     public function exportDirectory(
         DirectoryRequest $request,
-    ): View|StreamedResponse|Response {
+    ): View|StreamedResponse|Response|BinaryFileResponse {
         return $this->export(
             $this->directoryQuery($request->filters()),
             self::DIRECTORY_COLUMNS,
@@ -128,7 +133,7 @@ class UsersReadController extends Controller
 
     public function exportAccessLog(
         AccessLogRequest $request,
-    ): View|StreamedResponse|Response {
+    ): View|StreamedResponse|Response|BinaryFileResponse {
         $filters = $request->filters();
 
         return $this->export(
@@ -147,7 +152,7 @@ class UsersReadController extends Controller
          * Conserva los joins internos del legacy. El rol no se muestra,
          * pero un usuario sin plaza o rol legacy relacionado tampoco aparece.
          *
-         * Solo selecciona las cinco columnas visibles.
+         * Selecciona los cinco datos exportables. El listado añade el ID para editar.
          */
         $query = User::query()
             ->join('tbl_roles as r', 'tbl_usuarios.rol_id', '=', 'r.id')
@@ -229,10 +234,10 @@ class UsersReadController extends Controller
              * genere patrones SQL inesperados.
              */
             $pattern = '%'.str_replace(
-                    ['!', '%', '_'],
-                    ['!!', '!%', '!_'],
-                    $filters['q'],
-                ).'%';
+                ['!', '%', '_'],
+                ['!!', '!%', '!_'],
+                $filters['q'],
+            ).'%';
 
             $query->where(function (Builder $search) use (
                 $columns,
@@ -266,45 +271,35 @@ class UsersReadController extends Controller
         string $filename,
         string $format,
         ?string $date,
-    ): View|StreamedResponse|Response {
+    ): View|StreamedResponse|Response|BinaryFileResponse {
         $baseFilename = pathinfo($filename, PATHINFO_FILENAME);
 
         if ($format === 'xlsx') {
-            return app(UsersReadSpreadsheet::class)->download(
-                $query,
-                $columns,
-                $title,
+            return Excel::download(
+                new UsersReadSpreadsheet($query, $columns, $title),
                 $baseFilename.'.xlsx',
+                \Maatwebsite\Excel\Excel::XLSX,
+                ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff'],
             );
         }
 
         if ($format === 'pdf') {
-            $options = new Options();
-
-            $options->set('defaultFont', 'DejaVu Sans');
-            $options->set('isRemoteEnabled', false);
-            $options->set('isPhpEnabled', false);
-            $options->set('isJavascriptEnabled', false);
-
-            $pdf = new Dompdf($options);
-
-            $html = view('usuarios.pdf', [
+            return Pdf::loadView('usuarios.pdf', [
                 'title' => $title,
                 'date' => $date,
                 'columns' => $columns,
-                'records' => $query->cursor(),
-            ])->render();
-
-            $pdf->loadHtml($html, 'UTF-8');
-            $pdf->setPaper('a4', 'portrait');
-            $pdf->render();
-
-            return response($pdf->output(), 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'attachment; filename="'.$baseFilename.'.pdf"',
-                'Cache-Control' => 'private, no-store',
-                'X-Content-Type-Options' => 'nosniff',
-            ]);
+                'records' => $query->lazy(500),
+            ])->setOptions([
+                'defaultFont' => 'DejaVu Sans',
+                'isRemoteEnabled' => false,
+                'isPhpEnabled' => false,
+                'isJavascriptEnabled' => false,
+            ])->setPaper('a4', 'portrait')
+                ->download($baseFilename.'.pdf')
+                ->withHeaders([
+                    'Cache-Control' => 'private, no-store',
+                    'X-Content-Type-Options' => 'nosniff',
+                ]);
         }
 
         if ($format === 'print') {

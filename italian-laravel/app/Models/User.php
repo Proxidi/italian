@@ -59,7 +59,7 @@ class User extends Authenticatable
      * que transformen automáticamente esta columna.
      *
      * Los roles y permisos se consultan exclusivamente con Spatie.
-     * rol_id se conserva como fuente de verdad para el Seeder:
+     * rol_id se mantiene sincronizado con Spatie al crear/cambiar rol:
      *
      * 1 => superadmin (Dueño)
      * 2 => admin      (Manager)

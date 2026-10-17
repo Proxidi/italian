@@ -25,10 +25,13 @@
         </a>
     </header>
 
+    @if(session('message'))
+        <p class="users-form__success" role="status">{{ session('message') }}</p>
+    @endif
     <section class="users-read" aria-label="{{ $title }}">
         @if ($errors->any())
             <div class="users-read__errors" role="alert">
-                <p>Revisa los filtros:</p>
+                <p>Revisa los datos:</p>
                 <ul>
                     @foreach ($errors->all() as $error)
                         <li>{{ $error }}</li>
@@ -42,8 +45,8 @@
                 <button
                     class="users-read__button users-read__button--blue"
                     type="button"
-                    disabled
-                    aria-disabled="true"
+                    data-open-user-create
+                    @cannot('create', \App\Models\User::class) disabled aria-disabled="true" @endcannot
                 >
                     <span aria-hidden="true">✚</span>
                     Agregar Usuario
@@ -187,17 +190,13 @@
 
                         @if ($isDirectory)
                             <td data-copy-exclude>
-                                <button
-                                    class="users-read__action users-read__action--edit"
-                                    type="button"
-                                    disabled
-                                    aria-disabled="true"
-                                    aria-label="Editar usuario: no disponible"
-                                >
-                                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                                        <path d="m16 3 5 5-12 12-6 1 1-6L16 3Zm-11 13-1 3 3-1 10-10-2-2L5 16Z"/>
-                                    </svg>
-                                </button>
+                                @if(auth('web')->user()->can('users.update'))
+                                    <a class="users-read__action users-read__action--edit" href="{{ route('usuarios.edit', $record->id) }}" aria-label="Editar usuario {{ $record->Nombre }}">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6L16 3Zm-11 13-1 3 3-1 10-10-2-2L5 16Z"/></svg>
+                                    </a>
+                                @else
+                                    <button class="users-read__action users-read__action--edit" type="button" disabled aria-disabled="true" aria-label="Editar usuario: sin permiso">✎</button>
+                                @endif
                             </td>
 
                             <td data-copy-exclude>
@@ -264,4 +263,9 @@
             </nav>
         </footer>
     </section>
+    @if($isDirectory)
+        @can('create', \App\Models\User::class)
+            @include('usuarios.partials.create')
+        @endcan
+    @endif
 @endsection

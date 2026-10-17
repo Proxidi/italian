@@ -2,13 +2,18 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Users\SaveUser;
 use App\Models\User;
+use Barryvdh\DomPDF\PDF;
 use Carbon\Carbon;
 use Database\Seeders\UsersReadPermissionsSeeder;
+use Database\Seeders\UsersWritePermissionsSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Spatie\Permission\Exceptions\RoleDoesNotExist;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -98,11 +103,11 @@ class UsersReadTest extends TestCase
     public function test_guest_cannot_access_screens_or_exports(): void
     {
         foreach ([
-                     'usuarios.index',
-                     'usuarios.export',
-                     'usuarios.accesos',
-                     'usuarios.accesos.export',
-                 ] as $route) {
+            'usuarios.index',
+            'usuarios.export',
+            'usuarios.accesos',
+            'usuarios.accesos.export',
+        ] as $route) {
             $this->get(route($route))
                 ->assertRedirect(route('login'));
         }
@@ -158,7 +163,7 @@ class UsersReadTest extends TestCase
         $this->assertSame(100, $records->perPage());
 
         $this->assertSame(
-            ['Nombre', 'Edad', 'Email', 'Usuario', 'Plaza'],
+            ['Nombre', 'Edad', 'Email', 'Usuario', 'Plaza', 'id'],
             array_keys((array) $records->first()),
         );
 
@@ -532,6 +537,373 @@ class UsersReadTest extends TestCase
         );
     }
 
+    private function userPayload(array $overrides = []): array
+    {
+        return array_replace([
+            'nombre' => 'María José', 'apepat' => 'Pérez', 'apemat' => 'López',
+            'edad' => 32, 'sexo' => 'M', 'email' => 'nueva@example.test',
+            'usuario' => 'nueva', 'password' => 'clave-nueva', 'plaza_id' => 2, 'rol_id' => 2,
+        ], $overrides);
+    }
+
+    private function enableWrites(): void
+    {
+        $this->seed(UsersWritePermissionsSeeder::class);
+    }
+
+    public function test_write_routes_require_authentication(): void
+    {
+        $user = $this->createUser('admin');
+        $this->post(route('usuarios.store'), $this->userPayload())->assertRedirect(route('login'));
+        $this->get(route('usuarios.edit', $user))->assertRedirect(route('login'));
+        $this->put(route('usuarios.update', $user), [])->assertRedirect(route('login'));
+    }
+
+    #[DataProvider('roleAccess')]
+    public function test_write_permissions_are_enforced_for_every_role(string $role, int $directoryStatus, int $accessLogStatus): void
+    {
+        $this->enableWrites();
+        $actor = $this->createUser($role);
+        $subject = $this->createUser('admin');
+        $this->actingAs($actor, 'web');
+        $snapshot = $this->snapshot();
+        $status = $role === 'root' ? 200 : 403;
+        $this->get(route('usuarios.edit', $subject))->assertStatus($status);
+        if ($role !== 'root') {
+            $this->post(route('usuarios.store'), $this->userPayload())->assertForbidden();
+            $this->put(route('usuarios.update', $subject), [])->assertForbidden();
+        }
+        $this->assertSame($snapshot, $this->snapshot());
+    }
+
+    public function test_directory_read_permission_alone_does_not_authorize_writes(): void
+    {
+        $root = $this->createUser('root');
+        $subject = $this->createUser('admin');
+        $this->actingAs($root, 'web');
+        $this->post(route('usuarios.store'), $this->userPayload())->assertForbidden();
+        $this->get(route('usuarios.edit', $subject))->assertForbidden();
+        $this->put(route('usuarios.update', $subject), [])->assertForbidden();
+    }
+
+    public function test_create_saves_complete_legacy_user_and_spatie_role_atomically(): void
+    {
+        $this->enableWrites();
+        $root = $this->createUser('root');
+        $this->actingAs($root, 'web')
+            ->post(route('usuarios.store'), $this->userPayload())
+            ->assertRedirect(route('usuarios.index'))->assertSessionHas('message');
+        $user = User::where('Usuario', 'nueva')->firstOrFail();
+        $this->assertSame('María José', $user->Nombre);
+        $this->assertSame('M', $user->Sexo);
+        $this->assertSame(2, $user->plaza_id);
+        $this->assertSame(2, $user->rol_id);
+        $this->assertSame(sha1('clave-nueva'), $user->Password);
+        $this->assertSame(sha1((string) $user->id), $user->sha1_id);
+        $this->assertTrue(password_verify((string) $user->id, $user->Hash));
+        $this->assertSame(['admin'], $user->getRoleNames()->all());
+        $this->assertDatabaseCount('tbl_bitacora_accesos', 0);
+    }
+
+    public function test_update_preserves_password_sex_identifiers_and_existing_roles_when_role_unchanged(): void
+    {
+        $this->enableWrites();
+        $root = $this->createUser('root');
+        $subject = $this->createUser('admin');
+        $subject->assignRole('socio');
+        $original = $subject->getAttributes();
+        $payload = $this->userPayload(['password' => '', 'rol_id' => 2]);
+        unset($payload['sexo']);
+        $this->actingAs($root, 'web')->put(route('usuarios.update', $subject), $payload)
+            ->assertRedirect(route('usuarios.index'))->assertSessionHas('message', 'Perfil Actualizado');
+        $subject->refresh();
+        foreach (['Password', 'Hash', 'sha1_id', 'Sexo'] as $field) {
+            $this->assertSame($original[$field], $subject->{$field});
+        }
+        $this->assertSame(2, $subject->plaza_id);
+        $this->assertSame('María José', $subject->Nombre);
+        $this->assertEqualsCanonicalizing(['admin', 'socio'], $subject->getRoleNames()->all());
+    }
+
+    public function test_changed_role_and_password_remain_compatible_with_legacy_login(): void
+    {
+        $this->enableWrites();
+        $root = $this->createUser('root');
+        $subject = $this->createUser('admin');
+        $payload = $this->userPayload(['rol_id' => 5]);
+        unset($payload['sexo']);
+        $this->actingAs($root, 'web')->put(route('usuarios.update', $subject), $payload)->assertRedirect();
+        $subject->refresh();
+        $this->assertSame(5, $subject->rol_id);
+        $this->assertSame(['socio'], $subject->getRoleNames()->all());
+        $this->assertSame(sha1('clave-nueva'), $subject->Password);
+
+        // Only synthetic SQLite data; exercise the active login without changing it.
+        Schema::create('tbl_reporte_ventas', function (Blueprint $table): void {
+            $table->date('Fecha');
+            $table->integer('plaza_id');
+        });
+        $this->post(route('logout'))->assertRedirect(route('login'));
+        $this->post(route('login.store'), ['username' => 'nueva', 'password' => 'clave-nueva'])
+            ->assertRedirect(route('inicio'));
+        $this->assertAuthenticatedAs($subject, 'web');
+        $this->assertSame(sha1('clave-nueva'), $subject->fresh()->Password);
+        $this->assertDatabaseHas('tbl_bitacora_accesos', ['usuario_id' => $subject->id, 'plaza_id' => 2]);
+    }
+
+    public function test_update_allows_unchanged_unique_fields_and_edit_does_not_expose_password_hash(): void
+    {
+        $this->enableWrites();
+        $root = $this->createUser('root');
+        $subject = $this->createUser('superadmin', plaza: 2);
+        $this->actingAs($root, 'web')->get(route('usuarios.edit', $subject))->assertOk()
+            ->assertSee('Apellido Paterno')->assertSee('Deja vacío')
+            ->assertDontSee($subject->Password)->assertDontSee($subject->Hash)->assertDontSee($subject->sha1_id)
+            ->assertDontSee('name="sexo"', false);
+        $payload = $this->userPayload(['email' => $subject->Email, 'usuario' => $subject->Usuario, 'rol_id' => 1]);
+        unset($payload['sexo'], $payload['password']);
+        $this->put(route('usuarios.update', $subject), $payload)->assertRedirect(route('usuarios.index'));
+        $this->assertSame(1, $subject->fresh()->rol_id);
+        $this->get(route('usuarios.edit', 999999))->assertNotFound();
+    }
+
+    public function test_create_validates_required_fields_duplicates_references_and_lengths_without_writes(): void
+    {
+        $this->enableWrites();
+        $root = $this->createUser('root');
+        $this->actingAs($root, 'web');
+        $before = $this->snapshot();
+        $this->post(route('usuarios.store'), [])->assertSessionHasErrors([
+            'nombre', 'apepat', 'apemat', 'edad', 'sexo', 'email', 'usuario', 'password', 'plaza_id', 'rol_id',
+        ]);
+        $this->post(route('usuarios.store'), $this->userPayload([
+            'nombre' => str_repeat('a', 26), 'edad' => 128, 'sexo' => 'X',
+            'email' => $root->Email, 'usuario' => $root->Usuario, 'plaza_id' => 999, 'rol_id' => 999,
+        ]))->assertSessionHasErrors(['nombre', 'edad', 'sexo', 'email', 'usuario', 'plaza_id', 'rol_id']);
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    public function test_update_rejects_duplicate_credentials_and_protected_fields_without_changes(): void
+    {
+        $this->enableWrites();
+        $root = $this->createUser('root');
+        $subject = $this->createUser('admin');
+        $before = $this->snapshot();
+        $this->actingAs($root, 'web')->put(route('usuarios.update', $subject), $this->userPayload([
+            'email' => $root->Email, 'usuario' => $root->Usuario,
+            'Password' => 'spoof', 'Hash' => 'spoof', 'sha1_id' => 'spoof',
+        ]))->assertSessionHasErrors(['email', 'usuario', 'sexo', 'Password', 'Hash', 'sha1_id']);
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    public function test_create_rolls_back_if_spatie_role_sync_fails(): void
+    {
+        Role::findByName('admin', 'web')->delete();
+        $before = $this->snapshot();
+        try {
+            app(SaveUser::class)->handle($this->userPayload());
+            $this->fail('Expected missing mapped role to abort transaction');
+        } catch (RoleDoesNotExist) {
+            $this->assertSame($before, $this->snapshot());
+        }
+    }
+
+    public function test_update_rolls_back_fields_password_and_role_if_sync_fails(): void
+    {
+        $subject = $this->createUser('admin');
+        Role::findByName('socio', 'web')->delete();
+        $before = $this->snapshot();
+        try {
+            app(SaveUser::class)->handle($this->userPayload(['rol_id' => 5]), $subject);
+            $this->fail('Expected missing mapped role to abort transaction');
+        } catch (RoleDoesNotExist) {
+            $this->assertSame($before, $this->snapshot());
+        }
+    }
+
+    public function test_write_permissions_seeder_is_idempotent_and_preserves_unrelated_permissions(): void
+    {
+        $other = Permission::findOrCreate('other-module.update', 'web');
+        Role::findByName('admin', 'web')->givePermissionTo($other);
+        $this->enableWrites();
+        $first = DB::table('role_has_permissions')->orderBy('permission_id')->orderBy('role_id')->get()->toJson();
+        $this->enableWrites();
+        $this->assertSame($first, DB::table('role_has_permissions')->orderBy('permission_id')->orderBy('role_id')->get()->toJson());
+        $this->assertTrue(Role::findByName('admin', 'web')->hasPermissionTo('other-module.update'));
+        $this->assertFalse(Role::findByName('superadmin', 'web')->hasPermissionTo('users.update'));
+    }
+
+    public function test_xlsx_preserves_all_rows_across_batches_filters_sort_formats_and_formula_safety(): void
+    {
+        $root = $this->createUser('root');
+        $rows = [];
+        for ($i = 0; $i < 505; $i++) {
+            $rows[] = [
+                'Nombre' => sprintf('Listado %04d', $i), 'Apepat' => 'Apellido', 'Apemat' => 'Segundo',
+                'Edad' => 30, 'Sexo' => 'H', 'Email' => "export$i@example.test", 'Usuario' => "export$i",
+                'Password' => sha1('test'), 'Hash' => 'test', 'sha1_id' => sha1((string) $i), 'rol_id' => 2, 'plaza_id' => 2,
+            ];
+        }
+        DB::table('tbl_usuarios')->insert($rows);
+        DB::table('tbl_usuarios')->where('Usuario', 'export0')->update(['Email' => '=HYPERLINK("test")']);
+        $before = $this->snapshot();
+        $response = $this->actingAs($root, 'web')->get(route('usuarios.export', [
+            'format' => 'xlsx', 'q' => 'Listado', 'sort' => 'name', 'direction' => 'desc', 'page' => 2,
+        ]))->assertOk()->assertDownload('usuarios.xlsx');
+        $this->assertStringStartsWith('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $response->headers->get('Content-Type'));
+        $path = $response->baseResponse->getFile()->getPathname();
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getActiveSheet();
+            $this->assertSame('Usuarios', $sheet->getCell('A1')->getValue());
+            $this->assertSame(['Nombre', 'Edad', 'Email', 'Usuario', 'Plaza'], $sheet->rangeToArray('A3:E3')[0]);
+            $this->assertSame(508, $sheet->getHighestRow());
+            $this->assertSame('E', $sheet->getHighestColumn());
+            $this->assertSame('Listado 0504', $sheet->getCell('A4')->getValue());
+            $this->assertSame('Listado 0000', $sheet->getCell('A508')->getValue());
+            $this->assertSame('=HYPERLINK("test")', $sheet->getCell('C508')->getValue());
+            $this->assertSame('s', $sheet->getCell('C508')->getDataType());
+            $this->assertSame('30', $sheet->getCell('B4')->getValue());
+            $this->assertSame('A4', $sheet->getFreezePane());
+            $this->assertSame('A3:E508', $sheet->getAutoFilter()->getRange());
+            $this->assertTrue($sheet->getStyle('A1')->getFont()->getBold());
+            $this->assertSame(['A1:E1' => 'A1:E1'], $sheet->getMergeCells());
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    public function test_access_xlsx_preserves_date_scope_and_current_role(): void
+    {
+        $root = $this->createUser('root');
+        $this->insertAccess($root, '2026-10-10', 2, '09:00:00');
+        $this->insertAccess($root, '2026-10-11', 1, '10:00:00');
+        $response = $this->actingAs($root, 'web')->get(route('usuarios.accesos.export', [
+            'format' => 'xlsx', 'date' => '2026-10-10',
+        ]))->assertOk()->assertDownload('bitacora-accesos-2026-10-10.xlsx');
+        $path = $response->baseResponse->getFile()->getPathname();
+        try {
+            $book = IOFactory::load($path);
+            $sheet = $book->getActiveSheet();
+            $this->assertSame(4, $sheet->getHighestRow());
+            $this->assertSame(['2026-10-10', '09:00:00', 'Plaza del acceso', $root->Nombre, 'Gerente'], $sheet->rangeToArray('A4:E4')[0]);
+            $book->disconnectWorksheets();
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_pdf_download_is_real_and_uses_safe_options_filters_and_sorted_complete_scope(): void
+    {
+        $root = $this->createUser('root');
+        for ($i = 0; $i < 105; $i++) {
+            $other = $this->createUser('admin', plaza: 2);
+            $other->Nombre = sprintf('PDF %03d', $i);
+            $other->save();
+        }
+        $other->Nombre = 'PDF <script>alert(1)</script>';
+        $other->save();
+        $this->actingAs($root, 'web');
+        $before = $this->snapshot();
+        $wrapper = $this->capturePdfSource();
+        $response = $this->get(route('usuarios.export', [
+            'format' => 'pdf', 'q' => 'PDF', 'sort' => 'name', 'direction' => 'asc', 'page' => 2,
+        ]))->assertOk()->assertDownload('usuarios.pdf')->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF-', $response->getContent());
+        $pdf = $wrapper->getDomPDF();
+        $dom = $wrapper->sourceDom;
+        $this->assertSame(0, $dom->getElementsByTagName('script')->length);
+        $cells = $dom->getElementsByTagName('td');
+        $this->assertSame(105 * 5, $cells->length);
+        $this->assertSame('PDF 000', $cells->item(0)->textContent);
+        $this->assertSame('PDF <script>alert(1)</script>', $cells->item(104 * 5)->textContent);
+        $this->assertStringNotContainsString($root->Nombre, $dom->textContent);
+        $options = $pdf->getOptions();
+        $this->assertFalse($options->getIsRemoteEnabled());
+        $this->assertFalse($options->getIsPhpEnabled());
+        $this->assertFalse($options->getIsJavascriptEnabled());
+        $this->assertSame('DejaVu Sans', $options->getDefaultFont());
+        $this->assertEqualsWithDelta([0, 0, 595.28, 841.89], $pdf->getPaperSize(), 0.1);
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    public function test_access_pdf_preserves_date_headers_and_recorded_plaza(): void
+    {
+        $root = $this->createUser('root');
+        $this->insertAccess($root, '2026-10-10', 2, '09:00:00');
+        $this->insertAccess($root, '2026-10-11', 1, '10:00:00');
+        $wrapper = $this->capturePdfSource();
+        $response = $this->actingAs($root, 'web')->get(route('usuarios.accesos.export', [
+            'format' => 'pdf', 'date' => '2026-10-10',
+        ]))->assertOk()->assertDownload('bitacora-accesos-2026-10-10.pdf');
+        $this->assertStringStartsWith('%PDF-', $response->getContent());
+        $dom = $wrapper->sourceDom;
+        $this->assertSame(5, $dom->getElementsByTagName('td')->length);
+        $this->assertStringContainsString('Fecha: 2026-10-10', $dom->textContent);
+        $this->assertStringContainsString('Plaza del acceso', $dom->textContent);
+        $this->assertStringNotContainsString('2026-10-11', $dom->textContent);
+    }
+
+    public function test_create_validation_reopens_modal_and_never_flashes_password(): void
+    {
+        $this->enableWrites();
+        $root = $this->createUser('root');
+        $this->actingAs($root, 'web')->from(route('usuarios.index'))
+            ->post(route('usuarios.store'), $this->userPayload(['usuario' => $root->Usuario]))
+            ->assertRedirect(route('usuarios.index'))->assertSessionHasErrors('usuario')
+            ->assertSessionMissing('_old_input.password');
+        $this->assertSame(['usuario'], array_keys(session('errors')->getBag('default')->messages()));
+        $screen = $this->withCookie(config('session.cookie'), session()->getId())
+            ->get(route('usuarios.index'))->assertOk();
+        $this->assertTrue(str_contains($screen->getContent(), 'data-reopen'), 'Modal should reopen after validation');
+        $screen->assertSee('María José')->assertDontSee('clave-nueva');
+    }
+
+    public function test_filter_validation_does_not_open_create_modal(): void
+    {
+        $this->enableWrites();
+        $root = $this->createUser('root');
+        $this->actingAs($root, 'web')->from(route('usuarios.index'))
+            ->get(route('usuarios.index', ['sort' => 'invalid']))
+            ->assertSessionHasErrors('sort');
+        $this->withCookie(config('session.cookie'), session()->getId())
+            ->get(route('usuarios.index'))->assertOk()->assertSee('Revisa los datos:')
+            ->assertDontSee('data-reopen', false);
+    }
+
+    public function test_update_rejects_whitespace_password_that_the_login_would_reject(): void
+    {
+        $this->enableWrites();
+        $root = $this->createUser('root');
+        $subject = $this->createUser('admin');
+        $before = $this->snapshot();
+        $payload = $this->userPayload(['password' => '   ']);
+        unset($payload['sexo']);
+        $this->actingAs($root, 'web')->put(route('usuarios.update', $subject), $payload)
+            ->assertSessionHasErrors('password');
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    private function capturePdfSource(): PDF
+    {
+        $wrapper = new class(app('dompdf'), app('config'), app('files'), app('view')) extends PDF
+        {
+            public ?\DOMDocument $sourceDom = null;
+
+            public function render(): void
+            {
+                // Dompdf releases table nodes while rendering; retain only a test snapshot.
+                $this->sourceDom = clone $this->getDomPDF()->getDom();
+                parent::render();
+            }
+        };
+        $this->app->instance('dompdf.wrapper', $wrapper);
+
+        return $wrapper;
+    }
+
     private function createUser(string $role, int $plaza = 1): User
     {
         $number = DB::table('tbl_usuarios')->count() + 1;
@@ -584,16 +956,16 @@ class UsersReadTest extends TestCase
         $snapshot = [];
 
         foreach ([
-                     'tbl_usuarios',
-                     'tbl_roles',
-                     'tbl_plazas',
-                     'tbl_bitacora_accesos',
-                     'roles',
-                     'permissions',
-                     'model_has_roles',
-                     'model_has_permissions',
-                     'role_has_permissions',
-                 ] as $table) {
+            'tbl_usuarios',
+            'tbl_roles',
+            'tbl_plazas',
+            'tbl_bitacora_accesos',
+            'roles',
+            'permissions',
+            'model_has_roles',
+            'model_has_permissions',
+            'role_has_permissions',
+        ] as $table) {
             $snapshot[$table] = DB::table($table)
                 ->get()
                 ->map(fn ($row) => (array) $row)
@@ -668,9 +1040,9 @@ class UsersReadTest extends TestCase
         }
 
         foreach ([
-                     'model_has_roles' => 'role_id',
-                     'model_has_permissions' => 'permission_id',
-                 ] as $tableName => $key) {
+            'model_has_roles' => 'role_id',
+            'model_has_permissions' => 'permission_id',
+        ] as $tableName => $key) {
             $schema->create(
                 $tableName,
                 function (Blueprint $table) use ($key): void {
