@@ -1,21 +1,24 @@
 # Contexto de migración — CodeIgniter a Laravel
 
-## 1. Propósito
+## 1. Propósito y criterio actual
 
-Este documento transfiere el contexto acumulado de la migración de The Italian Coffee Company.
+Este documento conserva decisiones, restricciones, hallazgos y estado de la migración de The Italian Coffee Company.
 
-El repositorio combinado debe contener:
+El repositorio combinado contiene:
 
-- el sistema CodeIgniter legacy como referencia funcional y visual;
-- el sistema Laravel actual como destino de la migración.
+- CodeIgniter legacy como referencia funcional y visual;
+- Laravel como nueva aplicación objetivo.
 
-Regla central:
+La definición más reciente de Javi es:
 
-> Migrar comportamiento y reglas de negocio, no la arquitectura legacy.
+> Laravel debe conservar con la mayor fidelidad posible lo que el usuario ve, la información mostrada, las acciones disponibles y las reglas de negocio del legacy; por detrás, código, arquitectura, herramientas y base de datos pueden y deben rediseñarse para trabajar de forma nativa, segura, rápida y mantenible en Laravel.
 
-Laravel debe preservar lo que el cliente necesita ver y hacer, pero implementar cada responsabilidad de forma nativa, mantenible, segura y razonable para Laravel.
+Esto implica dos reglas simultáneas:
 
-Este documento es una bitácora técnica viva. Debe actualizarse conforme avance la migración.
+1. **fidelidad visible y funcional**: no eliminar ni rediseñar arbitrariamente lo que el legacy muestra;
+2. **libertad técnica interna**: no copiar mecanismos CodeIgniter cuando Laravel ofrezca una solución mejor.
+
+El legacy sirve para descubrir requisitos del producto, no como arquitectura que deba reproducirse.
 
 ---
 
@@ -26,30 +29,73 @@ Este documento es una bitácora técnica viva. Debe actualizarse conforme avance
 - CodeIgniter 3.1.9.
 - PHP 7.4.
 - MySQL.
-- Base de datos histórica: `italian`.
-- UI basada en Bootstrap 3, AdminLTE, jQuery, DataTables y múltiples dependencias globales.
+- Base histórica `italian`.
+- Bootstrap 3, AdminLTE, jQuery, DataTables y otras dependencias globales.
 
 ### Laravel
 
 - Laravel 13.
 - PHP 8.5.
 - MySQL 8.4.
-- Sail / Docker.
+- Laravel Sail / Docker.
 - Blade + Vite.
-- CSS propio.
-- JavaScript nativo cuando sea suficiente.
-- `spatie/laravel-permission` para autorización.
-- Autenticación web con guard `web` y sesiones nativas.
+- `spatie/laravel-permission`.
+- Autenticación web con guard `web` y sesiones Laravel.
+- Form Requests.
+- PHPUnit.
 
-El estado exacto de versiones y paquetes debe verificarse siempre contra `composer.json`, `composer.lock` y el entorno real.
+Verificar siempre versiones exactas contra `composer.json`, `composer.lock` y el contenedor real.
 
 ---
 
-## 3. Convivencia temporal de ambos sistemas
+## 3. Nueva dirección para la base de datos
 
-CodeIgniter y Laravel comparten temporalmente la misma base de datos local.
+Javi confirmó que la migración incluirá una **migración/rediseño de base de datos**, no solo reutilización permanente del esquema CodeIgniter.
 
-Esto obliga a conservar compatibilidad con el esquema legacy mientras ambos sistemas estén activos.
+Objetivos mencionados:
+
+- mejorar la estructura;
+- cambiar nombres de tablas;
+- probablemente eliminar el prefijo `tbl_`;
+- posiblemente renombrar algunas columnas;
+- mantener los datos que sigan siendo necesarios.
+
+### Nombre `usuarios`
+
+Javi indicó que `tbl_usuarios` pasará probablemente a:
+
+```text
+usuarios
+```
+
+Esto se considera aproximadamente **90 % seguro**, pero todavía no debe tratarse como esquema final hasta recibir la definición formal.
+
+No asumir automáticamente que todas las demás tablas conservarán exactamente sus columnas actuales ni que todo cambio será solo de nombres.
+
+### Consecuencia arquitectónica
+
+El esquema legacy debe tratarse como una restricción temporal de persistencia.
+
+Mientras se sigue desarrollando antes de recibir el esquema definitivo:
+
+- usar modelos Eloquent cuando representen bien las entidades;
+- evitar repetir nombres físicos de tablas por todo el código;
+- encapsular consultas complejas en lugares coherentes;
+- no inventar una capa de abstracción enorme solo para anticipar cambios desconocidos;
+- no crear migraciones definitivas copiando ciegamente el esquema legacy;
+- mantener tests que permitan detectar regresiones cuando cambien tablas/columnas.
+
+Un cambio como `tbl_usuarios → usuarios` debería afectar principalmente la capa de persistencia si el código está bien encapsulado.
+
+Los cambios de columnas pueden requerir más adaptación, pero son manejables mediante modelos, accessors/casts, consultas centralizadas y refactors cubiertos por tests.
+
+---
+
+## 4. Convivencia temporal de CodeIgniter y Laravel
+
+Actualmente ambos sistemas siguen trabajando con la base legacy.
+
+Esto condiciona temporalmente varias decisiones que **no forman parte de la arquitectura objetivo**.
 
 ### Contraseñas
 
@@ -59,19 +105,20 @@ CodeIgniter usa:
 - columna `Password`;
 - SHA-1.
 
-Durante la convivencia:
+Mientras CodeIgniter continúe autenticando contra ese esquema:
 
-- Laravel valida temporalmente la contraseña comparando SHA-1.
-- Laravel no debe modificar ni rehashear `tbl_usuarios.Password`.
-- No usar cast `hashed`.
-- No usar `Hash::make()`, `Hash::needsRehash()` ni una migración automática de contraseña durante login.
-- La migración a hashes modernos será una etapa posterior al retiro de CodeIgniter.
+- Laravel valida temporalmente SHA-1;
+- Laravel no modifica ni rehashea `tbl_usuarios.Password`;
+- no usar cast `hashed`;
+- no usar `Hash::make()`, `Hash::needsRehash()` ni migración automática durante login.
+
+Cuando exista el nuevo esquema y se retire la dependencia de CodeIgniter, deberá diseñarse la migración a hashes modernos.
 
 ---
 
-## 4. Roles
+## 5. Roles
 
-Mapeo confirmado:
+Mapeo actual:
 
 | `rol_id` legacy | Nombre legacy | Rol Spatie |
 |---:|---|---|
@@ -81,30 +128,28 @@ Mapeo confirmado:
 | 4 | SubManager | `submanager` |
 | 5 | Socio | `socio` |
 
-Reglas:
+Decisiones:
 
-- `submanager` debe seguir siendo independiente.
-- No fusionar `admin` y `submanager` aunque compartan parte del panel.
-- No crear un bypass global para `superadmin`; Dueño no tiene todos los permisos legacy.
-- Mientras CodeIgniter siga vivo, `tbl_usuarios.rol_id` continúa siendo la fuente legacy de rol.
+- `submanager` es un rol independiente.
+- No fusionar `admin` y `submanager` aunque compartan UI.
+- No crear bypass global para `superadmin`; Dueño no posee todos los permisos legacy.
+- Mientras exista convivencia, `tbl_usuarios.rol_id` continúa siendo la fuente legacy de rol.
 - Laravel usa Spatie para autorización.
-- Cuando en el futuro se implemente edición de roles, `rol_id` y Spatie deberán actualizarse en la misma transacción mientras exista convivencia.
+- Cuando se implemente edición de roles durante convivencia, `rol_id` y Spatie deberán actualizarse coherentemente, preferiblemente en la misma transacción.
 
-### Seeder temporal de roles
+### Seeder temporal
 
-Según el trabajo previo se implementó `LegacyUserRolesSeeder` usando `syncRoles()`.
+Se implementó `LegacyUserRolesSeeder` usando `syncRoles()` para sincronizar desde `rol_id` hacia Spatie durante desarrollo/transición.
 
-Su objetivo es sincronizar desde `tbl_usuarios.rol_id` hacia Spatie durante desarrollo/transición.
+No debe convertirse en el flujo normal de producción para editar usuarios.
 
-No debe convertirse en el mecanismo normal de producción para cambiar el rol de un usuario.
-
-**Pendiente de verificar contra el repositorio Laravel combinado.**
+**Verificar estado real contra el repositorio Laravel actual.**
 
 ---
 
-## 5. Autenticación legacy
+## 6. Autenticación legacy
 
-Archivos relevantes del legacy:
+Archivos relevantes:
 
 - `application/controllers/Seguridad.php`
 - `application/models/Mdl_seguridad.php`
@@ -116,14 +161,14 @@ Flujo observado:
 
 1. recibe username/password;
 2. aplica SHA-1;
-3. autentica contra el usuario legacy;
+3. autentica al usuario;
 4. registra acceso;
 5. carga datos de sesión;
 6. redirige a `/Inicio`.
 
-La sesión legacy contiene más información que Laravel necesita mantener como sesión de autenticación.
+La sesión legacy contiene más información que la necesaria para una sesión Laravel moderna.
 
-Laravel debe obtener la identidad desde `Auth::guard('web')` y consultar datos adicionales solo cuando sean necesarios.
+Laravel debe obtener identidad desde `Auth::guard('web')` y consultar información adicional solo cuando corresponda.
 
 ### Bitácora de login
 
@@ -134,39 +179,37 @@ El legacy registra al menos:
 - `usuario_id`;
 - `plaza_id`.
 
-Este comportamiento debe preservarse mientras sea parte de la funcionalidad vigente.
+Este comportamiento visible/funcional debe conservarse mientras siga siendo un requisito del sistema.
 
 ### Modal/aviso de corte
 
-Existe lógica legacy relacionada con `modal`, `msj` y `hoy`, además de consultas de ventas cercanas al login.
+Existe lógica legacy relacionada con `modal`, `msj`, `hoy` y consultas de ventas alrededor del login.
 
-La relación exacta entre controlador, vistas y JavaScript no quedó completamente caracterizada.
-
-**Pendiente:** verificar todo el flujo antes de migrar esa funcionalidad.
+El flujo completo todavía debe caracterizarse antes de migrarlo.
 
 ---
 
-## 6. Autenticación Laravel
+## 7. Autenticación Laravel
 
-Según el historial de implementación, Laravel ya cuenta con:
+Según el historial ya se implementaron:
 
-- `App\\Models\\User` extendiendo `Authenticatable`;
-- tabla legacy `tbl_usuarios`;
+- `App\Models\User` extendiendo `Authenticatable`;
+- uso temporal de `tbl_usuarios`;
 - `LoginRequest`;
 - `AuthenticatedSessionController`;
 - guard `web`;
 - sesiones nativas;
-- login mediante `Auth::login()` / guard equivalente;
-- regeneración de sesión tras autenticación;
+- login mediante Auth;
+- regeneración de sesión;
 - logout POST;
 - invalidación de sesión;
-- regeneración de token CSRF;
+- regeneración de CSRF;
 - `guest:web` para login;
 - `auth:web` para áreas autenticadas;
-- throttling aproximado de 5 intentos/minuto;
-- validación temporal SHA-1.
+- throttle aproximado de 5 intentos/minuto;
+- validación SHA-1 temporal.
 
-Archivos que deben verificarse directamente en el nuevo repositorio:
+Archivos relevantes:
 
 - `app/Models/User.php`
 - `app/Http/Controllers/Auth/AuthenticatedSessionController.php`
@@ -174,87 +217,100 @@ Archivos que deben verificarse directamente en el nuevo repositorio:
 - `database/seeders/LegacyUserRolesSeeder.php`
 - `routes/web.php`
 
-No asumir que el contenido actual coincide exactamente con este resumen hasta comprobarlo.
+El código real del repositorio tiene prioridad sobre este resumen.
 
 ---
 
-## 7. Autorización legacy
+## 8. Autorización legacy
 
-Archivos/tablas principales:
+Componentes principales:
 
 - `application/libraries/Backend_lib.php`
 - `application/models/Mdl_backend.php`
 - `tbl_roles`
 - `tbl_menus`
 - `tbl_permisos`
-- lógica adicional hardcodeada en controladores/vistas.
+- controles hardcodeados en controladores/vistas.
 
-### Separación importante: navegación vs autorización
-
-En el legacy son mecanismos distintos.
+### Navegación y autorización no son lo mismo
 
 #### Navegación
 
-El sidebar/dashboard contiene principalmente lógica hardcodeada por `rol_id`.
+Sidebar/dashboard dependen principalmente de condiciones hardcodeadas por `rol_id`.
 
-Por ello, cambiar permisos en `tbl_permisos` no garantiza que el sidebar o dashboard cambien automáticamente.
+Modificar `tbl_permisos` no implica que el menú cambie automáticamente.
 
 #### Autorización
 
-`Backend_lib::control()` usa la ruta actual y la relaciona con `tbl_menus`/`tbl_permisos`.
+`Backend_lib::control()` relaciona la ruta actual con `tbl_menus`/`tbl_permisos`.
 
-El sistema histórico presenta problemas como:
+El sistema histórico presenta:
 
 - coincidencias parciales de rutas;
 - entradas duplicadas;
 - rutas/acciones obsoletas;
 - acciones internas;
-- acciones existentes fuera de `tbl_menus`;
+- acciones implementadas fuera de `tbl_menus`;
 - excepciones AJAX;
-- controles hardcodeados adicionales.
+- condiciones adicionales por rol.
 
-`Leer` funciona en la práctica más como “puede ejecutar esta acción” que como un CRUD estrictamente de lectura.
+`Leer` funciona en la práctica más como “puede ejecutar esta acción” que como un CRUD literal de lectura.
 
 ### Consecuencia para Laravel
 
 No importar mecánicamente `tbl_menus` y `tbl_permisos` a Spatie.
 
-Cada módulo debe caracterizarse y convertirse en permisos semánticos.
-
-Ejemplo:
+Caracterizar cada módulo y crear permisos semánticos, por ejemplo:
 
 - `users.directory.view`
 - `access-log.view`
 - `medidas.view`
 - `medidas.update`
 
-Las rutas deben usar permisos explícitos, por ejemplo middleware `can:`.
-
-Ocultar un enlace nunca es autorización suficiente.
+Las rutas y acciones deben aplicar autorización server-side mediante esos permisos.
 
 ---
 
-## 8. Rol 4 / SubManager
+## 9. SubManager / rol 4
 
 Hallazgos previos:
 
 - rol 4 no tenía filas normales en `tbl_permisos` en los datos analizados;
-- aun así comparte visualmente panel con Manager;
-- existen relaciones de rol 4 en estructuras de gastos como `tbl_grupos_roles_gastos`.
+- comparte visualmente panel con Manager;
+- aparece relacionado en estructuras de gastos como `tbl_grupos_roles_gastos`.
 
 Conclusión:
 
 - no asumir que SubManager hereda permisos de Manager;
-- no fusionar ambos roles;
-- caracterizar cada flujo real antes de asignar permisos Laravel.
+- no fusionar los roles;
+- caracterizar cada flujo antes de asignar permisos Laravel.
 
 ---
 
-## 9. `/Inicio` legacy
+## 10. Fidelidad visual como requisito
 
-El legacy selecciona panel por `rol_id`:
+Javi confirmó expresamente que Laravel debe mantenerse **lo más fiel posible visualmente a CodeIgniter**.
 
-| Rol legacy | Panel |
+Regla:
+
+> Todo lo relevante que muestre el legacy debe seguir mostrándose en Laravel, aunque por detrás el código, las consultas, las librerías y la BD funcionen de otra manera.
+
+Por tanto:
+
+- no convertir una migración en un rediseño;
+- conservar datos, columnas, botones, etiquetas, jerarquía y distribución relevantes;
+- mantener controles aún no migrados como deshabilitados si hace falta para conservar la pantalla;
+- una herramienta Laravel diferente es válida siempre que conserve el resultado visible y funcional.
+
+Ejemplo: si el legacy muestra una tabla mediante DataTables, Laravel no necesita usar DataTables. Puede usar Blade, paginación/query builder/Eloquent/JS propio u otra solución apropiada, pero debe conservar la información, controles y apariencia requeridos.
+
+---
+
+## 11. `/Inicio` legacy
+
+Selección de panel por rol:
+
+| Rol legacy | Vista/panel |
 |---:|---|
 | 1 Dueño | `superadmin` |
 | 2 Manager | `admin` |
@@ -262,24 +318,23 @@ El legacy selecciona panel por `rol_id`:
 | 4 SubManager | `admin` |
 | 5 Socio | `socio` |
 
-Esto define panel visual, no equivalencia de permisos.
+Esto define el panel visual, no equivalencia de permisos.
 
-### Rasgos visuales relevantes
+Rasgos observados:
 
 - Dueño/Gerente muestran “Panel de Administración”.
-- Subtítulo: “Panel de Control”.
-- Perfil del header usa principalmente `Nombre`.
-- El dropdown de usuario muestra avatar, usuario, plaza, estado y acciones.
-- Sidebar y dashboard contienen accesos diferentes por rol.
-- Muchas rutas aún no migradas deben aparecer como pendientes/deshabilitadas cuando corresponda.
+- Subtítulo “Panel de Control”.
+- Header usa principalmente `Nombre`.
+- Dropdown muestra avatar, usuario, plaza, estado y acciones.
+- Sidebar/dashboard varían por rol.
 
 ---
 
-## 10. `/Inicio` Laravel
+## 12. `/Inicio` Laravel
 
-Según el historial se creó una navegación configurada y reutilizable.
+Según el historial se implementó una navegación reutilizable.
 
-Archivos relevantes reportados:
+Archivos reportados:
 
 - `config/authenticated-navigation.php`
 - `app/Support/AuthenticatedNavigation.php`
@@ -290,37 +345,37 @@ Archivos relevantes reportados:
 - `resources/css/authenticated.css`
 - `resources/js/authenticated.js`
 
-### Decisiones conocidas
+Decisiones conocidas:
 
-- panel base definido por rol;
-- navegación concreta filtrada por permisos cuando corresponde;
-- destinos aún no migrados pueden quedar deshabilitados;
-- perfil usa `Nombre` corto con fallback a `Usuario`;
-- nombre completo puede usar apellidos;
-- plaza se obtiene desde `tbl_usuarios.plaza_id → tbl_plazas.id → tbl_plazas.Nombre`;
-- sidebar con comportamiento acordeón;
-- layout con scroll independiente entre sidebar y contenido;
-- sin Bootstrap/AdminLTE/jQuery como dependencia de la nueva UI.
+- panel base por rol;
+- opciones filtrables por permisos;
+- destinos no migrados pueden quedar deshabilitados;
+- nombre corto desde `Nombre` con fallback a `Usuario`;
+- nombre completo puede incluir apellidos;
+- plaza actual desde `tbl_usuarios.plaza_id → tbl_plazas.id → tbl_plazas.Nombre` mientras siga el esquema legacy;
+- sidebar tipo acordeón;
+- scroll independiente entre sidebar/contenido;
+- sin necesidad de Bootstrap/AdminLTE/jQuery en la nueva implementación.
 
-**Pendiente de verificar contra el repositorio Laravel combinado.**
+**Verificar estado actual contra la rama/repo Laravel real.**
 
 ---
 
-## 11. Filosofía de navegación Laravel
+## 13. Modelo de navegación Laravel
 
 Modelo deseado:
 
 ```text
 rol
-→ define tipo de panel / estructura base
+→ define panel / estructura base
 
 permisos
 → definen capacidades concretas
 → protegen rutas
-→ pueden controlar visibilidad de opciones
+→ controlan visibilidad cuando corresponde
 ```
 
-Ejemplo:
+Ejemplo actual:
 
 ```text
 root
@@ -332,11 +387,11 @@ superadmin
 → NO users.directory.view
 ```
 
-Esto evita la desincronización legacy entre lo que aparece en menú y lo que realmente está autorizado.
+Esto evita la desincronización legacy entre navegación y autorización.
 
 ---
 
-## 12. Usuarios — primera etapa
+## 14. Usuarios — primera etapa
 
 Primera etapa acordada: solo lectura.
 
@@ -368,9 +423,9 @@ Columnas:
 - Editar
 - Eliminar
 
-El listado es global; no se filtra por plaza.
+Es global; no se filtra por plaza.
 
-Las columnas de edición/eliminación deben mantenerse visualmente si ayudan a la fidelidad, pero permanecer deshabilitadas hasta migrar esas acciones.
+Editar/Eliminar pueden permanecer visibles pero deshabilitados hasta migrar esas acciones.
 
 ### Bitácora legacy
 
@@ -384,34 +439,30 @@ Columnas:
 
 Características:
 
-- filtro por fecha exacta;
-- por defecto usa el día actual;
-- plaza mostrada desde el acceso registrado;
-- rol mostrado desde el rol actual del usuario relacionado;
-- no usa un snapshot histórico de rol.
+- fecha exacta;
+- default al día actual;
+- plaza desde el acceso registrado;
+- rol mostrado desde el rol actual del usuario relacionado, no un snapshot histórico.
 
 ---
 
-## 13. Usuarios — Laravel
+## 15. Usuarios — Laravel
 
 Según el historial se implementaron:
 
 - `UsersReadController`;
 - `DirectoryRequest`;
 - `AccessLogRequest`;
-- permisos:
-  - `users.directory.view`
-  - `access-log.view`
-- rutas de listado/bitácora;
-- rutas de exportación;
+- permisos `users.directory.view` y `access-log.view`;
+- rutas de listado, bitácora y exports;
 - búsqueda server-side;
-- sort server-side;
-- paginación server-side;
-- escape de salida;
-- búsqueda con comodines tratados literalmente;
-- navegación permission-aware.
+- ordenamiento;
+- paginación;
+- protección XSS;
+- búsqueda con wildcards tratados literalmente;
+- navegación basada en permisos.
 
-### Matriz de permisos acordada
+### Matriz de permisos actual
 
 - `root`
   - `users.directory.view`
@@ -425,7 +476,7 @@ Según el historial se implementaron:
 - `socio`
   - ninguno de esos dos
 
-No hay bypass global para `superadmin`.
+No existe bypass global para `superadmin`.
 
 ### Paginación reportada
 
@@ -434,67 +485,58 @@ No hay bypass global para `superadmin`.
 
 ### Seeder
 
-`UsersReadPermissionsSeeder` asigna los dos permisos anteriores a los roles correctos.
+`UsersReadPermissionsSeeder` asigna estos permisos a los roles correctos sin eliminar permisos no relacionados.
 
-Debe conservar permisos no relacionados.
-
-**Pendiente de verificar contra el repositorio Laravel combinado.**
+Verificar todo contra el código actual antes de modificarlo.
 
 ---
 
-## 14. Fidelidad visual de Usuarios
+## 16. Fidelidad visual de Usuarios
 
-La primera implementación Laravel se veía demasiado rediseñada respecto al legacy.
+La primera versión Laravel se veía demasiado moderna/diferente respecto al legacy.
 
-Se acordó corregirla para aproximarse mucho más a las capturas originales.
+Se acordó aproximarla mucho más a las capturas originales.
 
-Objetivo visual:
+Objetivo:
 
 - encabezado compacto;
 - panel blanco;
-- botones de exportación pequeños tipo DataTables;
-- buscador alineado como en legacy;
+- botones Excel/PDF/Copy pequeños;
+- buscador alineado como legacy;
 - tabla densa;
 - paginación similar;
-- `Agregar Usuario`, `Editar`, `Eliminar` visibles pero deshabilitados;
-- sin introducir Bootstrap/AdminLTE/DataTables.
+- Agregar/Editar/Eliminar visibles pero deshabilitados cuando aún no estén migrados;
+- sin necesidad de adoptar AdminLTE/DataTables internamente.
 
-Regla general:
-
-> La implementación interna puede cambiar por completo, pero Victor debe reconocer visualmente la misma pantalla migrada.
+Esta decisión queda reforzada por la instrucción posterior de Javi: **la fidelidad visual es requisito**.
 
 ---
 
-## 15. Exportaciones legacy
+## 17. Exportaciones legacy
 
-Investigación global posterior a Usuarios encontró:
+Investigación global encontró:
 
 - DataTables Buttons cargado globalmente;
 - JSZip;
 - pdfmake;
 - `buttons.html5`;
 - aproximadamente 24 inicializadores centrales en `assets/js/tables.js`;
-- alrededor de 26 vistas con configuraciones DataTables propias.
+- alrededor de 26 vistas con configuraciones propias.
 
-Módulos con este patrón incluyen:
+Módulos con patrón de exportación incluyen:
 
 - Usuarios;
-- perfiles;
-- notificaciones;
-- opciones;
+- Perfiles;
+- Notificaciones/Opciones;
 - Ventas;
 - Depósitos;
-- Remesas;
-- Gastos;
+- Remesas/Gastos;
 - Inventario;
 - Pedidos;
-- Productos;
-- Insumos;
-- Unidades;
-- Nóminas;
-- reportes relacionados.
+- Productos/Insumos/Unidades;
+- Nóminas.
 
-Patrón:
+Patrón común:
 
 ```js
 dom: 'Bfrtip',
@@ -505,77 +547,57 @@ buttons: [
 ]
 ```
 
-### Comportamiento
+Características:
 
 - Excel genera `.xlsx` real.
 - PDF descarga `.pdf`.
 - Copy copia contenido de tabla.
-- títulos/columnas/tamaño de página varían.
+- títulos, columnas y tamaño de página varían por pantalla.
 - algunas tablas excluyen acciones;
-- otras exportan solo columnas visibles;
-- otras no especifican exclusiones.
+- otras exportan visibles;
+- otras usan defaults.
 
-No se encontró generación tabular XLSX/PDF desde controladores legacy.
-
-PHPExcel incluido en el legacy se usa principalmente para leer/importar archivos.
+PHPExcel legacy se usa principalmente para leer/importar archivos, no para generar esos reportes tabulares.
 
 ---
 
-## 16. Importaciones Excel legacy
+## 18. Importaciones Excel legacy
 
-Existen importaciones relevantes en módulos como:
+Existen importaciones relevantes en:
 
 - Ventas;
 - Pedidos;
 - Inventario.
 
-No son triviales.
+Incluyen casos no triviales como:
 
-Ejemplos encontrados:
-
-- lectura de celdas concretas como `G7` y `E6`;
+- lectura de celdas concretas (`G7`, `E6`);
 - recorrido de filas/celdas;
 - procesamiento de archivos de corte.
 
-Esto motivó una decisión global de infraestructura en Laravel, no limitada a Usuarios.
+Por eso la solución de Excel se decidió de forma transversal y no solo por Usuarios.
 
 ---
 
-## 17. Decisión global Excel/PDF en Laravel
+## 19. Excel/PDF en Laravel
 
-Después de revisar el legacy completo en este aspecto se decidió utilizar:
+Decisión global actual:
 
 ### Excel / XLSX
 
 `maatwebsite/excel`
 
-Motivos:
-
-- integración Laravel;
-- usa PhpSpreadsheet internamente;
-- exportación;
-- importación;
-- queries;
-- mapeo;
-- estilos;
-- múltiples hojas;
-- chunks/colas cuando haga falta.
+Usa PhpSpreadsheet internamente y cubre exportaciones/importaciones de forma más integrada con Laravel.
 
 ### PDF
 
 `barryvdh/laravel-dompdf`
 
-Motivos:
-
-- integración Laravel;
-- usa Dompdf;
-- Blade → PDF;
-- descarga directa;
-- suficiente para listados tabulares simples.
+Para listados tabulares simples y PDFs basados en Blade.
 
 PDFs visualmente complejos deben evaluarse por módulo.
 
-### Estado actual de Composer
+### Estado Composer reportado
 
 Dependencias directas esperadas:
 
@@ -584,62 +606,46 @@ Dependencias directas esperadas:
 "maatwebsite/excel": "^4.0"
 ```
 
-`phpoffice/phpspreadsheet` y `dompdf/dompdf` fueron instaladas primero directamente por error y luego retiradas de `composer.json`.
+`phpoffice/phpspreadsheet` y `dompdf/dompdf` se instalaron inicialmente de forma directa y luego se retiraron de `composer.json`; deben permanecer solo como transitivas si las requieren las integraciones anteriores.
 
-Deben permanecer solo como dependencias transitivas si son requeridas por las integraciones anteriores.
+La instalación con `--with-all-dependencies` actualizó también dependencias compatibles, incluido Laravel aproximadamente de `13.34.0` a `13.36.0`.
 
-La instalación con `--with-all-dependencies` actualizó también varias dependencias compatibles, incluido Laravel de aproximadamente `13.34.0` a `13.36.0`.
-
-Verificar estado real con:
-
-```bash
-composer show --direct
-composer why phpoffice/phpspreadsheet
-composer why dompdf/dompdf
-```
-
-y revisar extensiones del contenedor:
-
-```bash
-php -m | grep -Ei 'zip|xml|dom|gd|mbstring'
-```
-
-No usar `--ignore-platform-reqs`.
+Verificar contra `composer.json`/`composer.lock` actuales.
 
 ---
 
-## 18. Contrato futuro de exportaciones
+## 20. Contrato de exportaciones
+
+La implementación técnica puede diferir del legacy, pero el usuario debe conservar los controles/resultados visibles que correspondan.
 
 Para cada módulo:
 
-- Excel debe descargar `.xlsx` real.
-- PDF debe descargar `.pdf` directamente.
-- Excel/PDF deben respetar filtros activos.
-- Deben exportar todos los resultados autorizados que correspondan, no depender del DOM visible.
-- Copy debe reproducir el comportamiento efectivo del legacy de la tabla concreta.
-- Las columnas exportables se definen explícitamente.
-- No exportar Editar/Eliminar salvo que haya una razón real.
-- La ruta de exportación usa el mismo permiso que la pantalla.
-- Los datos de usuario deben tratarse de forma segura para evitar fórmulas en Excel.
-- PDFs deben escapar contenido.
-- No habilitar recursos remotos innecesarios en PDF.
-- Probar autorización, filtros, MIME, filename y descarga.
+- Excel descarga `.xlsx` real.
+- PDF descarga `.pdf`.
+- Copy conserva el comportamiento necesario de la tabla.
+- filtros activos deben respetarse.
+- permisos deben comprobarse server-side.
+- columnas exportables se definen explícitamente.
+- evitar exportar acciones salvo que tenga sentido.
+- proteger contra fórmulas de Excel.
+- escapar contenido PDF.
+- probar autorización, filtros, MIME, filename y descarga.
 
 ---
 
-## 19. Pruebas actuales
+## 21. Pruebas actuales
 
-`UsersReadTest` fue ejecutado correctamente antes de la reorganización:
+`UsersReadTest` fue ejecutado exitosamente antes de la reorganización:
 
 - 16 tests;
 - 111 assertions;
 - todos pasando.
 
-Incluye validaciones de:
+Cubre, entre otros:
 
 - invitados;
 - matriz de roles;
-- acceso directo a exports;
+- exports;
 - columnas;
 - alcance global;
 - fecha exacta;
@@ -647,125 +653,121 @@ Incluye validaciones de:
 - paginación;
 - validación;
 - búsqueda;
-- exports;
 - XSS;
-- wildcard literal;
+- wildcards literales;
 - navegación;
 - ausencia de escrituras;
 - idempotencia del seeder.
 
-### Suite completa
+### Tests scaffold obsoletos
 
-La suite conserva tests scaffold de Breeze para:
+La suite completa conserva tests heredados/scaffold para registro, password reset, email verification, password confirmation/update, perfil, eliminación de cuenta y ExampleTest.
 
-- registro;
-- reset de password;
-- verificación de email;
-- confirmación/actualización de password;
-- perfil;
-- eliminación de cuenta;
-- ExampleTest.
+Muchos fallan porque esperan el esquema y rutas estándar de Laravel/Breeze, no la autenticación legacy personalizada.
 
-Muchos fallan porque esperan:
+No interpretar esas fallas automáticamente como regresiones ni implementar funciones fuera de alcance solo para hacerlos pasar.
 
-- rutas que ya no existen;
-- modelo/esquema estándar Laravel;
-- tabla `users` o factory estándar;
-- comportamiento que no forma parte de la migración actual.
-
-No interpretar esas fallas automáticamente como regresiones.
-
-El nuevo repositorio debe decidir explícitamente qué tests scaffold:
-
-- eliminar;
-- reemplazar;
-- adaptar;
-
-antes de considerar confiable el resultado de `sail artisan test` completo.
-
-No implementar registro/password-reset/profile solo para hacer pasar tests obsoletos.
+Debe decidirse cuáles eliminar, adaptar o reemplazar.
 
 ---
 
-## 20. Medidas
+## 22. Medidas
 
 Medidas fue caracterizado como posible módulo piloto.
 
 ### Significado
 
-“Medidas” representa catálogo de unidades de medida.
-
-Tabla principal:
-
-- `tbl_unidades`
-
-Campos relevantes observados:
-
-- `id`
-- `Nombre`
-
-Ejemplos:
+Catálogo de unidades de medida en `tbl_unidades`, por ejemplo:
 
 - Kg
 - Gr
 - Lts
 - Pzas
 
-No hay factores de conversión.
+No contiene factores de conversión.
 
-### Diferencia importante
+“Medidas” no es lo mismo que el módulo “Unidades” de ventas/estadísticas.
 
-“Medidas” NO es el mismo módulo que “Unidades”.
+### Legacy
 
-“Unidades” legacy se relaciona con cantidades/estadísticas de ventas.
+- entrada: `/Medidas`;
+- actualización: `/Productos/actualizarUnidad`.
 
-### Flujo legacy
+Ese acoplamiento es técnico, no una regla de negocio que deba copiarse.
 
-- entrada: `/Medidas`
-- actualización: `/Productos/actualizarUnidad`
-
-Ese cruce hacia Productos es un acoplamiento legacy y no debe reproducirse necesariamente.
-
-Laravel debería modelar la capacidad como algo equivalente a:
+### Diseño Laravel conceptual
 
 - `medidas.view`
 - `medidas.update`
+- ruta propia del recurso/capacidad.
 
-y rutas semánticas propias del recurso.
-
-### Alcance acordado
+### Alcance conocido
 
 - listar;
-- renombrar unidades existentes;
+- renombrar existentes;
 - sin creación por ahora;
 - sin eliminación;
 - global, sin plaza.
 
-La UI legacy tiene un botón “Agregar Unidad”, pero la creación no está realmente implementada. Puede mantenerse visualmente deshabilitado si aporta fidelidad.
+El botón “Agregar Unidad” puede mantenerse visualmente deshabilitado por fidelidad mientras la acción no exista.
 
-### Permisos legacy observados
-
-Gerente/root es el rol relevante para esta funcionalidad.
-
-Revalidar directamente contra el repositorio combinado antes de implementar.
+Revalidar contra el repositorio antes de implementar.
 
 ---
 
-## 21. Mapa funcional general del legacy
+## 23. Índices recientes solicitados por Javi
 
-Los controladores no equivalen limpiamente a módulos de negocio.
+Javi pidió optimizar `tbl_rol_semanal_nomina` con dos índices mientras se sigue trabajando sobre la BD legacy.
 
-Ejemplos importantes:
+### Índice 1
+
+```sql
+ALTER TABLE tbl_rol_semanal_nomina
+  ADD INDEX idx_rol_plaza_lugar_turno_fecha
+  (plaza_id, rol_cafeteria_id, turno_id, Fecha);
+```
+
+Objetivo: acelerar listados/conteos de `Nominas::roles()` que filtran por plaza, lugar/rol de cafetería, turno y rango de fecha.
+
+### Índice 2
+
+```sql
+ALTER TABLE tbl_rol_semanal_nomina
+  ADD INDEX idx_rol_plaza_fecha_dia
+  (plaza_id, Fecha, dia_id);
+```
+
+Objetivo: acelerar conteos por día y permitir un índice cubridor para la consulta indicada por Javi.
+
+### Estado
+
+**Verificar en la BD actual si ya fueron aplicados.**
+
+Comprobación prevista mediante `information_schema.STATISTICS` y `EXPLAIN`.
+
+Javi advirtió que, sin el primer índice, algunos listados podían volver a aparecer ordenados por `id` en lugar de `Fecha` porque el legacy no define `ORDER BY` explícito.
+
+Conclusión para la migración: si el orden es funcionalmente importante, Laravel debe expresarlo con `ORDER BY`; nunca depender del orden accidental producido por un índice o plan de ejecución.
+
+Estos índices optimizan el esquema temporal; no deben condicionar el diseño del esquema nuevo.
+
+---
+
+## 24. Mapa funcional general
+
+Los controladores legacy no equivalen limpiamente a módulos de negocio.
+
+Ejemplos:
 
 - Pedidos recibe pedidos, pero Inventario incorpora stock.
-- Medidas muestra unidades, pero Productos actualiza una unidad.
-- Perfiles muestra datos, mientras Usuarios maneja modificaciones.
-- Remesas alimenta información usada posteriormente por Ventas.
-- Inventario concentra múltiples responsabilidades.
+- Medidas muestra unidades, pero Productos las actualiza.
+- Perfiles muestra datos, mientras Usuarios modifica.
+- Remesas alimenta datos usados posteriormente por Ventas.
+- Inventario concentra varias responsabilidades.
 
 Por tanto:
 
-> Migrar por responsabilidades funcionales, no por archivos/controladores.
+> Migrar por necesidades y responsabilidades funcionales, no por archivos/controladores CodeIgniter.
 
 Módulos identificados:
 
@@ -788,9 +790,9 @@ Módulos identificados:
 
 ---
 
-## 22. Orden aproximado de dependencias funcionales
+## 25. Orden funcional orientativo
 
-Mapa previo orientativo:
+Mapa previo:
 
 ```text
 Medidas / configuración
@@ -804,112 +806,92 @@ Medidas / configuración
 → COGS / análisis
 ```
 
-No tratar esto como calendario obligatorio.
+No es un calendario obligatorio.
 
-Usuarios fue priorizado primero por ser entidad transversal y permitir una primera etapa read-only de bajo riesgo.
+Usuarios fue priorizado primero por ser transversal y permitir una etapa read-only de bajo riesgo.
 
 ---
 
-## 23. Principios de diseño para nuevas migraciones
+## 26. Método de migración por módulo
 
-Antes de migrar un módulo:
+Desde la nueva definición de Javi, el flujo recomendado es:
 
-1. caracterizar comportamiento legacy;
-2. identificar tablas y dependencias;
-3. verificar roles/permisos efectivos;
-4. identificar alcance por plaza/global;
-5. identificar inputs/outputs;
-6. revisar UI y comportamiento visual;
-7. separar peculiaridades accidentales de reglas de negocio;
-8. diseñar permisos semánticos;
-9. implementar Laravel nativamente;
-10. crear pruebas;
-11. comparar visual/funcionalmente;
-12. actualizar este documento.
+```text
+LEGACY
+  ↓
+1. ¿Qué problema de negocio resuelve?
+  ↓
+2. ¿Qué información y acciones ve el usuario?
+  ↓
+3. ¿Qué reglas/permisos/alcan​​ces deben preservarse?
+  ↓
+4. ¿Qué datos necesita realmente?
+  ↓
+5. ¿Qué partes son accidentes técnicos de CodeIgniter?
+  ↓
+LARAVEL
+  ↓
+6. Diseñar la solución nativa más apropiada
+  ↓
+7. Reproducir fielmente el resultado visual/funcional requerido
+  ↓
+8. Implementar + probar
+  ↓
+9. Actualizar este documento
+```
 
 No asumir que:
 
 - un controlador = un módulo;
+- una tabla HTML legacy exige DataTables;
+- una ruta legacy debe conservarse internamente;
 - una fila de `tbl_menus` = un permiso Laravel;
-- un rol visible en sidebar = permiso real;
-- una ausencia de fila en `tbl_permisos` explica todo el comportamiento;
-- una peculiaridad interna de CodeIgniter debe copiarse.
+- una peculiaridad del esquema actual debe existir en el esquema nuevo;
+- fidelidad visual significa copiar arquitectura.
 
 ---
 
-## 24. Pendientes inmediatos al abrir el monorepo
+## 27. Zona horaria pendiente
 
-La primera tarea del nuevo Codex debe ser una auditoría, no una nueva implementación.
+Existe una cuestión pendiente alrededor de “hoy” en Laravel.
 
-Debe:
+El entorno había reportado configuración UTC en una revisión previa.
 
-1. leer `AGENTS.md`;
-2. leer este documento;
-3. inspeccionar el Laravel real;
-4. contrastar autenticación, navegación, `/Inicio`, Usuarios y dependencias;
-5. verificar todos los puntos marcados como pendientes;
-6. corregir este documento cuando contradiga el código real;
-7. no modificar funcionalidad durante esa primera auditoría salvo autorización explícita.
+La bitácora y filtros de fecha deben corresponder al horario real usado por el negocio/legacy.
 
-### Verificaciones prioritarias
-
-- `composer.json` / `composer.lock`;
-- versión real de Laravel;
-- `maatwebsite/excel`;
-- `barryvdh/laravel-dompdf`;
-- extensiones PHP requeridas;
-- autenticación SHA-1;
-- roles/Spatie;
-- `AuthenticatedNavigation`;
-- rutas de Usuarios;
-- `UsersReadTest`;
-- estado real de vistas/CSS/JS de Usuarios;
-- timezone usada por `now()` frente a la bitácora legacy;
-- tests Breeze obsoletos;
-- cualquier diferencia entre este documento y el código.
-
----
-
-## 25. Zona horaria
-
-Existe una cuestión pendiente alrededor de la fecha “hoy” en Laravel.
-
-Laravel había reportado configuración UTC en el historial previo.
-
-La bitácora y filtros de “hoy” deben corresponder al horario real usado por el negocio/legacy.
-
-Verificar en el nuevo repositorio y entorno:
-
-```bash
-php artisan tinker
-```
-
-y después:
+Verificar en el entorno actual:
 
 ```php
 config('app.timezone');
 now()->format('Y-m-d H:i:s P');
 ```
 
-Comparar con:
-
-- hora real del negocio;
-- una fila recién creada en `tbl_bitacora_accesos`;
-- configuración legacy.
+Comparar con una fila recién creada en `tbl_bitacora_accesos` y la configuración legacy.
 
 No asumir zona horaria sin comprobarla.
 
 ---
 
-## 26. Estado de documentación
+## 28. Pendientes prioritarios
 
-Este documento nació de una conversación anterior en la que el agente tenía acceso completo al legacy pero no al repositorio Laravel actual.
+1. Confirmar el diseño formal de la nueva base de datos cuando Javi lo entregue.
+2. Confirmar qué tablas además de `tbl_usuarios → usuarios` cambiarán de nombre.
+3. Confirmar renombres/eliminaciones/adiciones de columnas y relaciones.
+4. Diseñar la estrategia de migración de datos al nuevo esquema.
+5. Revisar qué compatibilidades temporales dejan de ser necesarias al retirar CodeIgniter.
+6. Verificar estado real de autenticación, Inicio, Usuarios, Composer y tests en el monorepo.
+7. Verificar si los dos índices de Nóminas ya fueron aplicados en la BD actual.
+8. Resolver timezone antes de depender de `now()` para comportamiento de negocio.
+9. Mantener fidelidad visual mientras se reemplazan mecanismos legacy por soluciones Laravel nativas.
 
-Por eso:
+---
 
-- los hallazgos legacy son referencia útil;
-- todo estado Laravel debe verificarse contra el nuevo checkout combinado;
-- el código real tiene prioridad sobre este documento cuando exista contradicción;
-- una contradicción debe corregirse aquí para evitar que se perpetúe.
+## 29. Regla de prioridad de fuentes
 
-El objetivo no es que este documento sustituya al código, sino que conserve decisiones, razones, restricciones y hallazgos que no son evidentes al leer archivos aislados.
+Cuando haya contradicción:
+
+1. una instrucción nueva y explícita de Javi tiene prioridad sobre decisiones antiguas;
+2. el código y la BD reales tienen prioridad sobre recuerdos de implementación;
+3. este documento debe actualizarse para reflejar la decisión vigente.
+
+Los puntos no confirmados deben permanecer marcados como pendientes o con su nivel de certeza.
