@@ -1,0 +1,24 @@
+.ui-feedback { display: flex; align-items: center; gap: 10px; min-height: 62px; margin: 0 10px 20px; padding: 15px; color: #fff; background: #00a65a; }
+.ui-feedback--notice { min-height: 42px; margin: 0 0 15px; color: #3c763d; background: #dff0d8; }
+.ui-feedback__icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+.ui-feedback strong { font-size: 18px; letter-spacing: .1px; }
+.ui-feedback--notice strong { font-size: 14px; font-weight: 400; }
+.ui-feedback__close { margin-left: auto; padding: 0 2px; border: 0; color: inherit; background: transparent; font-size: 20px; line-height: 1; cursor: pointer; opacity: .7; }
+.ui-feedback__close:hover, .ui-feedback__close:focus-visible { opacity: 1; }
+.ui-feedback-dialog { box-sizing: border-box; width: min(512px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; border: 0; border-radius: 6px; padding: 40px 28px; color: #555; background: #fff; text-align: center; box-shadow: 0 6px 22px rgb(0 0 0 / 25%); }
+.ui-feedback-dialog[open] { animation: ui-success-popup .25s ease-out; }
+.ui-feedback-dialog--corner { margin: 20px 20px auto auto; }
+.ui-feedback-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.ui-feedback-dialog__symbol { width: 88px; height: 88px; margin: 0 auto 25px; color: #a5dc86; }
+.ui-feedback-dialog__symbol svg { width: 100%; height: 100%; overflow: visible; fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.ui-feedback-dialog__symbol circle { stroke-dasharray: 214; stroke-dashoffset: 214; animation: ui-success-circle .55s ease-out forwards; }
+.ui-feedback-dialog__symbol path { stroke-dasharray: 52; stroke-dashoffset: 52; animation: ui-success-check .35s .45s ease-out forwards; }
+.ui-feedback-dialog h2 { margin: 0; color: #555; font-size: 30px; font-weight: 700; }
+.ui-feedback-dialog h2:focus { outline: none; }
+.ui-feedback-dialog p { margin: 8px 0 0; font-size: 18px; }
+@keyframes ui-success-circle { to { stroke-dashoffset: 0; } }
+@keyframes ui-success-check { to { stroke-dashoffset: 0; } }
+@keyframes ui-success-popup { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+    .ui-feedback-dialog[open], .ui-feedback-dialog__symbol circle, .ui-feedback-dialog__symbol path { animation: none; stroke-dashoffset: 0; }
+}

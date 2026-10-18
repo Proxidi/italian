@@ -113,6 +113,26 @@ class ConfigurationTest extends TestCase
         ];
     }
 
+    public function test_upload_window_success_uses_the_legacy_timed_animation(): void
+    {
+        $this->actingAs($this->actor(), 'web')->put(route('configuration.dates.update'), [
+            'setting_id' => 1, 'numero_dias_valor' => 5,
+        ])->assertRedirect(route('configuration.dates'));
+        $this->withCookie(config('session.cookie'), session()->getId())->get(route('configuration.dates'))
+            ->assertOk()->assertSee('data-feedback-dialog', false)->assertSee('data-duration="1500"', false)
+            ->assertSee('ui-feedback-dialog--corner', false)->assertDontSee('data-redirect-url', false);
+    }
+
+    public function test_notification_date_success_does_not_invent_a_legacy_animation(): void
+    {
+        $this->actingAs($this->actor(), 'web')->put(route('configuration.notifications.update'), [
+            'setting_id' => 1, 'fecha' => '2026-10-18',
+        ])->assertRedirect(route('configuration.notifications'));
+        $this->withCookie(config('session.cookie'), session()->getId())->get(route('configuration.notifications'))
+            ->assertOk()->assertSee('Fecha de notificaciones actualizada.')
+            ->assertSee('data-feedback', false)->assertDontSee('data-feedback-dialog', false)->assertDontSee('data-duration', false);
+    }
+
     public function test_guests_cannot_read_export_or_update(): void
     {
         foreach (['configuration.index', 'configuration.dates', 'configuration.notifications', 'configuration.dates.export', 'configuration.notifications.export'] as $route) {

@@ -44,7 +44,7 @@ class ProductsController extends Controller
         // One atomic row update. References and conversion data remain untouched.
         $unit->update(['Nombre' => $request->validated('nombre')]);
 
-        return to_route('products.units.index')->with('unit-success', 'Unidad actualizada correctamente!!');
+        return to_route('products.units.index')->with('unit-success', 'Unidad actualizada correctamente!!')->with('unit-updated', true);
     }
 
     public function export(UnitsReadRequest $request): Response

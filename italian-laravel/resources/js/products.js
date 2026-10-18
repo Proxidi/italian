@@ -29,15 +29,3 @@ window.addEventListener('pageshow', () => document.querySelectorAll('[data-unit-
     form.removeAttribute('aria-busy');
     form.querySelectorAll('button[type="submit"]').forEach(button => { button.disabled = false; });
 }));
-const success = document.querySelector('[data-unit-success]');
-if (success) window.setTimeout(() => success.remove(), 1000);
-document.querySelector('[data-copy-units]')?.addEventListener('click', async () => {
-    const status = document.querySelector('[data-copy-status]');
-    const names = Array.from(document.querySelectorAll('[data-unit-name]'), cell => cell.textContent.trim());
-    try {
-        await navigator.clipboard.writeText(['Unidades Insumos', 'Nombre', ...names].join('\n'));
-        status.textContent = 'Datos copiados.';
-    } catch {
-        status.textContent = 'No se pudo copiar. Utiliza Excel o PDF.';
-    }
-});

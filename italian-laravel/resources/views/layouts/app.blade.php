@@ -13,6 +13,9 @@
     @vite([
         'resources/css/authenticated.css',
         'resources/js/authenticated.js',
+        'resources/css/ui-list.css',
+        'resources/css/ui-feedback.css',
+        'resources/js/ui.js',
     ])
 
     @stack('styles')

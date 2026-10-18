@@ -1035,4 +1035,139 @@ entorno completo y observación de consumidores coexistentes. La política de
 eliminación y una eventual gestión de conversiones requieren otra decisión;
 Insumos/Costos/fórmulas/Productos avanzados y demás módulos siguen fuera de alcance.
 Sin cambios en legacy, esquema, autenticación, dependencias, infraestructura o
-AGENTS.md. Esta entrega no se ha publicado en GitHub.
+AGENTS.md. Esta entrega se publicó en `master` como `c42e3a76`.
+
+### Decisión de tablas y avisos visuales compartidos (implementada en sección 22)
+
+La tabla de Usuarios (`usuarios/table.blade.php` + users-read.css) fue la primera
+implementación completa de listado y se ajustó de forma más estrecha a la captura
+legacy: encabezados y celdas centrados, borde inferior de encabezado más marcado,
+botones de acción compactos y paginación. Configurar y Medidas se implementaron
+después con CSS de módulo propio; reproducen controles, exportación, búsqueda y
+paginar, pero sus tablas tienen bordes, alineación y espaciados distintos. Esta
+diferencia no responde a un requisito de datos, autorización, Laravel ni a una
+incompatibilidad entre módulos: es deuda de consistencia visual surgida al no
+haber extraído todavía una base común.
+
+Los listados no deben copiarse módulo por módulo. En una tarea visual transversal
+autorizada, extraer una base Blade/CSS propia para tabla autenticada reutilizable
+(contenedor, barra de herramientas, buscador, scroll, encabezados ordenables,
+paginación, exportación/Copy y acciones), con opciones explícitas para columnas,
+alineación y acciones. Debe conservar el HTML semántico, autorización del servidor,
+consultas/paginación/exports propios de cada módulo y las diferencias visibles que
+el legacy realmente requiera; no introducir DataTables, jQuery, Bootstrap,
+AdminLTE ni una dependencia nueva solo para ello. Usuarios, Configurar y Medidas
+son los primeros candidatos y deben migrarse juntos para evitar tres variantes.
+
+Lo mismo aplica a confirmaciones: Usuarios tiene una alerta de éxito destacada y
+un diálogo de alta; Configurar y Medidas usan tarjetas de éxito temporizadas con
+CSS/JS propios. En la misma tarea transversal se puede crear un componente propio
+de avisos con variantes de actualización y creación animada, duración, icono,
+anuncio accesible y `prefers-reduced-motion`. Laravel aporta flash de sesión y
+Blade, pero no una librería de animaciones que sea necesario adoptar. No cambiar
+estas pantallas de forma aislada hasta decidir y aplicar esa base común con pruebas
+visuales y de accesibilidad. La base ya se implementó; para nuevos módulos aplicar
+la regla comprobada y la matriz por acción de la sección 22, sin asumir que todas
+las altas/ediciones deben animarse.
+
+## 22. Base visual compartida de listados y confirmaciones (2026-10-18)
+
+El responsable autorizó estandarizar tablas y confirmaciones tras comparar
+Usuarios, Configurar y Medidas. Requisito explícito: **animar solo donde corresponda
+y el legacy tenga esa interacción**. Esta entrega implementa la decisión anterior;
+la apariencia base es la tabla Laravel de Usuarios que ya fue ajustada al legacy.
+
+### Regla de reutilización para siguientes módulos
+
+Usar los componentes Blade `components/ui/` para los elementos que ya son
+comunes: listing, toolbar, table, sort-heading, pagination, table-action/action-icon
+y feedback. Los estilos `ui-list.css` y `ui-feedback.css` y el JS `ui.js` se cargan
+una vez desde el layout autenticado. Las vistas del módulo suministran datos,
+columnas, filtros, rutas, acciones y permisos; no añadir consultas, decisiones de
+autorización ni nombres físicos de tablas a los componentes visuales.
+
+No copiar de nuevo una tabla/CSS/Copy por módulo, ni importar directamente una
+vista de Usuarios para representar un catálogo diferente. Mantener variaciones
+reales del legacy mediante opciones/clases/componentes simples, sin un framework
+genérico de tablas ni nuevas dependencias. No se añadieron librerías, jQuery,
+AdminLTE, DataTables o Bootstrap.
+
+La base comparte celdas centradas, bordes claros, encabezados con borde inferior
+marcado, flechas de orden, botones compactos SVG, herramientas Excel/PDF/Copy,
+buscador, foco visible, estado vacío y paginación. El ancho mínimo móvil de 700px
+es explícito para Usuarios/Bitácora (scroll dentro de la tabla), no para los
+catálogos pequeños. Se conservan acciones naranja/rojo en Usuarios y verde en
+Medidas/Corte & DLC: son diferencias comprobadas del legacy. No se agrega ninguna
+acción Eliminar ni se habilita la existente de Usuarios.
+
+Se usan los componentes en los cinco listados: directorio de Usuarios, Bitácora,
+Corte & DLC, Notificaciones y Medidas. Las formas de alta/edición conservan sus
+campos y validaciones, y el CSS específico solo conserva lo que pertenece a cada
+módulo (tarjetas, formularios y diálogos de edición). Ningún archivo fue eliminado.
+
+### Confirmaciones: decidir por recorrido, nunca automáticamente por POST/PUT
+
+Se releyeron las vistas legacy de Usuarios/list, Usuarios/editAdmin,
+opciones/fechas, notificaciones/add y productos/unidades/list. Resultado:
+
+| Acción | Legacy comprobado | Variante Laravel compartida |
+| --- | --- | --- |
+| Alta de Usuarios | SweetAlert de éxito con círculo/check, «Usuario Ingresado!», «Registro Exitoso!», seguido de navegación al listado. | Dialog centrado con check SVG animado; sin OK y redirección a los 2200ms, excepción ya autorizada por el responsable. |
+| Edición de Usuarios | Alerta verde destacada con icono/cierre; texto legacy erróneo «Peril Actualizado». | Banner estático verde, cierre manual, texto corregido «Perfil Actualizado». |
+| Actualizar Corte & DLC | SweetAlert de éxito top-end, sin OK, 1500ms. | Dialog superior derecho con el mismo check animado, sin OK, cierre a los 1500ms. |
+| Actualizar Medidas | SweetAlert de éxito top-end, sin OK, 1000ms. | Dialog superior derecho con el mismo check animado, sin OK, cierre a los 1000ms. |
+| Actualizar fecha de Notificaciones | POST y recarga de la tabla, sin SweetAlert/animación. | Aviso simple estático de guardado, conservando la confirmación explícita añadida al migrar; sin animación ni temporizador. |
+| Alta de Medidas | Formulario incompleto, sin guardado conectado ni confirmación verificable. | Aviso simple estático de la nueva alta solicitada en etapa 1; sin inventar una animación legacy. |
+
+`feedback` ofrece variantes banner/notice/dialog; el módulo elige explícitamente
+la variante, posición, duración y eventual URL de redirección. El JS nunca decide
+animar por el verbo HTTP o por el texto del mensaje. La animación comparte dibujo
+del círculo y check con SVG/CSS y aparición del popup; no copia SweetAlert como
+dependencia. Respeta `prefers-reduced-motion`, títulos/descripcion accesibles,
+diálogo nativo con foco y Escape, cierre temporal y recuperación del foco.
+Solo el alta de Usuarios redirige después de animar; los otros avisos no disparan
+una segunda petición de navegación. Se mantiene el patrón POST/redirect/GET
+existente y se evita duplicar un banner detrás de la confirmación de alta.
+
+No se muestran éxitos con errores de validación. ProductsController solo añade
+metadato flash `unit-updated=true` después de guardar una edición para distinguir
+su aviso del alta; no cambia la escritura de Nombre ni sus permisos/reglas.
+Las demás acciones/controladores, rutas, consultas, seeders, filtros y exports
+siguen siendo propios de cada módulo.
+
+### Copy y comportamiento de las tablas preservado
+
+`ui.js` copia solo los registros de la página visible de su listado, usando el
+texto de los encabezados sin flechas y excluyendo acciones. Conserva el título
+«Unidades Insumos» en Copy de Medidas; Usuarios y Configurar conservan su cabecera.
+Escapa tabuladores/saltos y protege valores que empiezan por =, +, - o @ como texto
+(la variante anterior de Medidas no compartía esa protección). Mensaje de copia
+accesible, fallo de clipboard informado y Copy deshabilitado sin registros.
+
+Las descargas siguen pasando por sus endpoints autorizados y conservan título,
+columnas, filtros, orden y alcance completo de resultados. No se cambia el número
+de filas por página ni el comportamiento de los formularios/bloqueos de envío.
+
+### Comprobaciones ejecutadas y límites
+
+ProductsUnitsTest + ConfigurationTest + UsersReadTest: **92 pruebas / 820 aserciones**
+correctas, incluyendo casos nuevos de confirmación por acción, ausencia de
+animaciones donde no existen en legacy y supresión de éxito con errores. Se
+conservan pruebas de permisos, altas/ediciones, relaciones, límites, filtros y
+descargas reales XLSX/PDF. Datos sintéticos en SQLite :memory:, PHP 8.5.11 y
+PHPUnit 12.5.39, contenedor sin red y sin MySQL compartido.
+
+Vite compila en `/tmp/italian-ui-vite-build`; sintaxis JS, Pint y `git diff --check`
+se comprueban. Harness externo de renderizado: **3 pruebas / 22 aserciones**.
+Chromium/Playwright sobre las vistas reales renderizadas por Laravel comprobó los
+cinco listados a 1366/390px: estilos compartidos, colores de acciones, ausencia de
+overflow de página, scroll interno de Usuarios, catálogos pequeños adaptados,
+Copy con fórmula como texto y acciones excluidas, estado vacío, formularios,
+Escape, errores/reapertura, bloqueo de doble envío, restauración pageshow,
+avisos animados con sus tiempos, redirección de Usuarios, avisos estáticos que
+permanecen y reduced-motion. Sin errores JavaScript. Capturas inspeccionadas y
+harness en `/tmp/italian-ui-visual/`; no acredita una sesión E2E sobre BD real.
+
+No se modificaron legacy, esquema, dependencias, infraestructura, AGENTS.md,
+autenticación o permisos. Vite solo registra los assets compartidos. Para probar
+esta entrega no se necesitan nuevos seeders ni escrituras de configuración.

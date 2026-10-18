@@ -170,6 +170,24 @@ class ProductsUnitsTest extends TestCase
         $this->assertSame(2, MeasurementUnit::where('Nombre', 'Gramos')->count());
     }
 
+    public function test_unit_update_uses_the_legacy_timed_animation(): void
+    {
+        $this->actingAs($this->actor(), 'web')->put(route('products.units.update', 1), ['nombre' => 'Gramos editados'])
+            ->assertRedirect(route('products.units.index'))->assertSessionHas('unit-updated', true);
+        $this->withCookie(config('session.cookie'), session()->getId())->get(route('products.units.index'))
+            ->assertOk()->assertSee('Unidad actualizada correctamente!!')->assertSee('data-feedback-dialog', false)
+            ->assertSee('data-duration="1000"', false)->assertSee('ui-feedback-dialog--corner', false)->assertDontSee('data-redirect-url', false);
+    }
+
+    public function test_new_unit_uses_static_feedback_without_inventing_a_legacy_animation(): void
+    {
+        $this->actingAs($this->actor(), 'web')->post(route('products.units.store'), ['nombre' => 'Unidad nueva'])
+            ->assertRedirect(route('products.units.index'))->assertSessionMissing('unit-updated');
+        $this->withCookie(config('session.cookie'), session()->getId())->get(route('products.units.index'))
+            ->assertOk()->assertSee('Unidad registrada correctamente!!')->assertSee('data-feedback', false)
+            ->assertDontSee('data-feedback-dialog', false)->assertDontSee('data-duration', false);
+    }
+
     public static function badNames(): array
     {
         return [[''], ['   '], [str_repeat('á', 51)], [['array']]];

@@ -11,6 +11,8 @@ use Database\Seeders\UsersWritePermissionsSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\MessageBag;
+use Illuminate\Support\ViewErrorBag;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\Exceptions\RoleDoesNotExist;
@@ -738,16 +740,33 @@ class UsersReadTest extends TestCase
         $this->actingAs($root, 'web')
             ->withSession(['message' => 'Perfil Actualizado'])
             ->get(route('usuarios.index'))
-            ->assertSee('users-flash--success', false)
+            ->assertSee('ui-feedback--banner', false)
             ->assertSee('Perfil Actualizado')
-            ->assertSee('data-dismiss-flash', false);
+            ->assertSee('data-dismiss-feedback', false)
+            ->assertDontSee('data-feedback-dialog', false);
 
         $this->actingAs($root, 'web')
             ->withSession(['message' => 'Usuario Ingresado!', 'user-created' => true])
             ->get(route('usuarios.index'))
             ->assertSee('data-user-created-dialog', false)
             ->assertSee('Registro Exitoso!')
-            ->assertSee('data-redirect-url', false);
+            ->assertSee('data-redirect-url', false)
+            ->assertSee('data-duration="2200"', false)
+            ->assertDontSee('ui-feedback--banner', false);
+    }
+
+    public function test_validation_errors_suppress_stale_success_feedback(): void
+    {
+        $root = $this->createUser('root');
+        $errors = new ViewErrorBag;
+        $errors->put('default', new MessageBag(['nombre' => ['Error de prueba.']]));
+        $screen = $this->actingAs($root, 'web')->get(route('usuarios.index'))->assertOk();
+        session()->put(['message' => 'Usuario Ingresado!', 'user-created' => true]);
+        // Render the real view with conflicting success/error state explicitly.
+        $html = $screen->original->with('errors', $errors)->render();
+        $this->assertStringContainsString('Error de prueba.', $html);
+        $this->assertStringNotContainsString('data-feedback-dialog', $html);
+        $this->assertStringNotContainsString('ui-feedback--banner', $html);
     }
 
     public function test_update_allows_unchanged_unique_fields_and_edit_does_not_expose_password_hash(): void

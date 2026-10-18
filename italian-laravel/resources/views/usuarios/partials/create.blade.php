@@ -4,8 +4,8 @@
         @csrf
         @include('usuarios.partials.fields', ['prefix' => 'create'])
         <footer class="users-dialog__footer">
-            <button class="users-read__button users-read__button--default" type="button" data-close-user-create>Cerrar</button>
-            <button class="users-read__button users-read__button--blue" type="submit">Guardar datos</button>
+            <button class="ui-list__button ui-list__button--default" type="button" data-close-user-create>Cerrar</button>
+            <button class="ui-list__button ui-list__button--blue" type="submit">Guardar datos</button>
         </footer>
     </form>
 </dialog>
