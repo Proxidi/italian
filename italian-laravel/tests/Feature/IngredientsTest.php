@@ -162,6 +162,37 @@ class IngredientsTest extends TestCase
         ]);
     }
 
+    public function test_fetch_save_uses_the_same_action_without_redirect_and_preserves_other_fields(): void
+    {
+        $ingredient = $this->ingredient();
+        $conversion = $this->conversion($ingredient);
+        $before = $conversion->toArray();
+        $this->actingAs($this->actor(), 'web')->putJson($this->updateUrl($ingredient, $conversion), ['bodega' => '/,2', 'pedido' => '*,3'])
+            ->assertOk()->assertExactJson(['message' => 'Insumo actualizado!!'])->assertSessionMissing('ingredient-success');
+        $this->assertSame([...$before, 'Bodega' => '/,2', 'Pedido' => '*,3'], $conversion->fresh()->toArray());
+    }
+
+    public function test_fetch_errors_never_report_success_or_change_data(): void
+    {
+        $ingredient = $this->ingredient();
+        $conversion = $this->conversion($ingredient);
+        $before = $this->snapshot();
+        $this->actingAs($this->actor(), 'web')->putJson($this->updateUrl($ingredient, $conversion), ['bodega' => '/,0', 'pedido' => '*,1,*,2'])
+            ->assertUnprocessable()->assertJsonValidationErrors(['bodega', 'pedido']);
+        Role::findByName('root', 'web')->revokePermissionTo('products.ingredients.conversions.update');
+        $this->putJson($this->updateUrl($ingredient, $conversion), ['bodega' => '*,2', 'pedido' => '*,1'])->assertForbidden();
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    public function test_html_fallback_contains_prefilled_conversion_form_and_real_links(): void
+    {
+        $ingredient = $this->ingredient();
+        $conversion = $this->conversion($ingredient);
+        $this->actingAs($this->actor(), 'web')->get(route('products.ingredients.conversions', $ingredient))
+            ->assertOk()->assertSee('value="*,25"', false)->assertSee('value="*,150"', false)
+            ->assertSee($this->updateUrl($ingredient, $conversion), false)->assertSee('<noscript>', false);
+    }
+
     public function test_guest_cannot_read_download_or_edit(): void
     {
         $ingredient = $this->ingredient();

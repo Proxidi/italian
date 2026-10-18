@@ -12,6 +12,7 @@ use App\Queries\IngredientsListing;
 use App\Support\AuthenticatedNavigation;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
@@ -34,9 +35,13 @@ class IngredientsController extends Controller
         ]);
     }
 
-    public function update(SaveIngredientConversionRequest $request, Ingredient $ingredient, IngredientConversion $conversion, UpdateIngredientConversion $action): RedirectResponse
+    public function update(SaveIngredientConversionRequest $request, Ingredient $ingredient, IngredientConversion $conversion, UpdateIngredientConversion $action): RedirectResponse|JsonResponse
     {
         $action->handle($ingredient, $conversion, $request->validated());
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => 'Insumo actualizado!!']);
+        }
 
         return to_route('products.ingredients.index', $request->safe()->only(['q', 'sort', 'direction', 'page']))->with('ingredient-success', 'Insumo actualizado!!');
     }

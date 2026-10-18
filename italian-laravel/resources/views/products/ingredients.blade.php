@@ -1,6 +1,14 @@
 @extends('products.layout')
 
 @section('products-content')
+    <p class="ui-list__errors" data-ingredient-load-status role="status" hidden></p>
+    <template data-ingredient-success-template>
+        <x-ui.feedback variant="dialog" position="corner" title="" :auto-open="false" :duration="1500" id="ingredient-async-success" />
+    </template>
+    <noscript><style>
+        .products-dialog { display: block; position: static; margin: 15px auto; }
+        .products-dialog button[type="button"] { display: none; }
+    </style></noscript>
     <header class="ui-list-heading">
         <h1>Insumos <small>Listado</small></h1>
         @can('products.view')<a href="{{ route('products.index') }}">Volver al Panel de Productos <span aria-hidden="true">➜</span></a>
@@ -8,6 +16,7 @@
     </header>
     @if (session('ingredient-success') && !$errors->any())
         <x-ui.feedback variant="dialog" position="corner" :title="session('ingredient-success')" :duration="1500" id="ingredient-success" />
+        <noscript><p class="ui-feedback ui-feedback--notice" role="status">{{ session('ingredient-success') }}</p></noscript>
     @endif
     <x-ui.listing label="Insumos">
         @if ($errors->any() && !$ingredient)<div class="ui-list__errors" role="alert">No se guardaron los cambios.</div>@endif
@@ -32,7 +41,7 @@
             </x-slot:head>
             @forelse ($records as $record)
                 <tr data-record-row>@foreach ($columns as $column)<td>{{ $record->{$column['field']} }}</td>@endforeach
-                    <td data-copy-exclude><x-ui.table-action color="green" :href="route('products.ingredients.conversions', ['ingredient' => $record->id, ...$filters])" aria-label="Configurar insumo {{ $record->Nombre }}" /></td>
+                    <td data-copy-exclude><x-ui.table-action color="green" data-open-conversions :href="route('products.ingredients.conversions', ['ingredient' => $record->id, ...$filters])" aria-label="Configurar insumo {{ $record->Nombre }}" /></td>
                 </tr>
             @empty<tr><td colspan="7">No se encontraron registros.</td></tr>@endforelse
         </x-ui.table>
@@ -61,19 +70,20 @@
                     @empty<tr><td colspan="3">Este insumo no tiene operaciones configuradas.</td></tr>@endforelse
                 </x-ui.table>
             </div>
-            <footer><a class="products-button" href="{{ route('products.ingredients.index', $filters) }}">Cerrar</a></footer>
+            <footer><a class="products-button" data-close-conversions href="{{ route('products.ingredients.index', $filters) }}">Cerrar</a></footer>
         </dialog>
         @if ($canEdit)
             <dialog class="products-dialog" data-conversion-edit @if ($errors->any() && $oldConversion) data-reopen @endif aria-labelledby="conversion-edit-title">
                 <header><h2 id="conversion-edit-title">Modificación de operaciones</h2><button type="button" data-close-conversion-edit aria-label="Cerrar">×</button></header>
                 <form action="{{ route('products.ingredients.conversions.update', ['ingredient' => $ingredient->id, 'conversion' => $conversions->first()->id]) }}" method="POST" data-conversion-form>
                     @csrf @method('PUT')
-                    <input type="hidden" name="_conversion_id" value="{{ $oldConversion?->id }}">
+                    <input type="hidden" name="_conversion_id" value="{{ $oldConversion?->id ?? $conversions->first()->id }}">
+                    <div class="ui-list__errors" data-conversion-errors role="alert" tabindex="-1" hidden></div>
                     @foreach ($filters as $key => $value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach
                     @if ($errors->any())<div class="ui-list__errors" role="alert"><p>No se guardaron los cambios:</p><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
                     @foreach (['bodega' => ['Bodega', 200, 'Hasta tres operaciones sucesivas. Ejemplo: -,615,/,1000.'], 'pedido' => ['Pedido', 50, 'Una sola operación. Ejemplo: *,150.']] as $field => [$label, $length, $help])
                         <div class="products-field"><label for="conversion-{{ $field }}">{{ $label }}:</label>
-                            <input class="products-input" id="conversion-{{ $field }}" name="{{ $field }}" type="text" required maxlength="{{ $length }}" value="{{ $oldConversion && is_string(old($field)) ? old($field) : '' }}" aria-describedby="conversion-{{ $field }}-help conversion-{{ $field }}-error" @error($field) aria-invalid="true" @enderror>
+                            <input class="products-input" id="conversion-{{ $field }}" name="{{ $field }}" type="text" required maxlength="{{ $length }}" value="{{ $oldConversion && is_string(old($field)) ? old($field) : $conversions->first()->{ucfirst($field)} }}" aria-describedby="conversion-{{ $field }}-help conversion-{{ $field }}-error" @error($field) aria-invalid="true" @enderror>
                             <p id="conversion-{{ $field }}-help" class="ingredients-field-help">{{ $help }} Operadores: *, +, -, /; sin espacios.</p>
                             <p id="conversion-{{ $field }}-error" class="products-field-error">@error($field){{ $message }}@enderror</p>
                         </div>

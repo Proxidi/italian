@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Usuarios — The Italian Coffee Company')
 @push('styles')
-    @vite('resources/css/ui-list.css')
+    @vite('resources/css/users-read.css')
 @endpush
 @section('content')
     <header class="ui-list-heading">

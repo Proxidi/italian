@@ -1330,9 +1330,12 @@ en SQLite efímera. No se cambian seeders anteriores para activarlo por accident
 Blade/CSS/JS propios reutilizan x-ui.* y products.layout. Operaciones conserva
 modal de consulta y modal de edición, con botones verde/cian, campos, mensajes,
 Escape/foco, errores anunciados y reapertura con valores inválidos, bloqueo de
-doble envío/restauración pageshow. La consulta usa GET autorizado con enlace
-real; la escritura PUT con CSRF, seguida de redirect/GET. Se conservan filtros y
-página tras guardar. Éxito «Insumo actualizado!!», check animado superior derecho,
+doble envío/restauración pageshow. La consulta conserva GET autorizado con enlace real; desde la mejora del
+2026-10-18, JavaScript intercepta el enlace mediante fetch y extrae únicamente
+los diálogos de la respuesta HTML, sin reemplazar el documento. La escritura
+conserva PUT con CSRF y la misma Action/Form Request; devuelve JSON si el cliente
+lo solicita y mantiene redirect/GET para el envío tradicional. Se conservan
+filtros y página tras guardar. Éxito «Insumo actualizado!!», check animado superior derecho,
 sin OK y **1500 ms**, como ese recorrido legacy. No se dispara otra navegación
 desde el temporizador y nunca se muestra éxito con errores. Sin nuevas dependencias.
 
@@ -1385,3 +1388,55 @@ aceptar cadenas más largas. No se presupone necesidad de editar catálogo gener
 ni eliminar insumos desde esta pantalla. Pendiente validación con datos reales:
 permisos, relaciones instaladas, charset/collation, locks/concurrencia MySQL,
 sesiones/CSRF E2E y efectos visibles de las conversiones en CodeIgniter coexistente.
+
+
+## Ajuste de interacción de conversiones y formulario de Usuarios — 2026-10-18
+
+Petición del responsable: conservar también la interacción visible del legacy.
+Insumos/list.php consulta y guarda operaciones mediante AJAX; al guardar muestra
+«Insumo actualizado!!» arriba a la derecha, sin OK durante 1500 ms, y luego cierra
+ambos modales. La implementación anterior Laravel usaba navegación/formulario
+tradicional, con recarga completa; esa diferencia se corrige mediante mejora
+progresiva con JavaScript nativo/fetch.
+
+- Abrir Operaciones consulta la ruta GET existente con fetch, importa únicamente
+  los diálogos de la respuesta HTML y mantiene el listado, búsqueda, orden y
+  página actuales. Cerrar/Escape devuelve el foco al enlace sin navegar.
+- Guardar envía FormData con CSRF y `_method=PUT`, `Accept: application/json` y
+  credenciales same-origin. IngredientsController conserva validación, permisos,
+  binding y transacción originales; solo agrega respuesta JSON tras éxito.
+  El formulario tradicional sigue recibiendo redirect/GET.
+- Validación 422 muestra mensajes con textContent y marca los campos inválidos;
+  401/419, otros errores y fallos de red no muestran éxito. Ante una respuesta
+  incierta no se reenvía automáticamente. Se bloquean envíos duplicados y el
+  cierre de los diálogos mientras la petición está en curso.
+- Éxito reutiliza x-ui.feedback con apertura manual (`autoOpen=false`), check y
+  popup animados, posición superior derecha, sin OK y 1500 ms; después cierra
+  ambos diálogos sin navegar y restaura el foco. Respeta el CSS existente de
+  prefers-reduced-motion. La inicialización automática de otros módulos conserva
+  su comportamiento por defecto.
+- Sin JavaScript, los enlaces siguen navegando normalmente. Un noscript muestra
+  consulta y formulario como secciones con Bodega/Pedido precargados; el envío
+  tradicional funciona con las mismas reglas y CSRF. El éxito tiene texto visible
+  alternativo sin depender de abrir un dialog desde JavaScript.
+- Editar Usuario no cargaba users-read.css, aunque el formulario compartido usa
+  sus clases. La vista ahora carga esa hoja existente: etiquetas sobre los campos,
+  ancho completo, altura mínima de 34 px y separación vertical de 15 px, también
+  en móvil. No se cambian campos ni validaciones. La contraseña permanece vacía
+  para conservar la actual; no se expone el hash como hacía el legacy.
+
+Validación de esta intervención: PHP 8.5.11 / PHPUnit 12.5.39, contenedor existente
+sin red, SQLite :memory: explícita y caches/vistas en /tmp. Insumos + Usuarios +
+Medidas + Configurar: **138 pruebas / 1172 aserciones**, todas correctas. Tres
+pruebas nuevas cubren JSON sin redirect, cambios limitados a Bodega/Pedido,
+validación/permisos sin escritura y HTML tradicional precargado. Vite compila en
+/tmp; node --check, Pint sobre PHP modificado y git diff --check pasan.
+
+Comprobación Chromium/Playwright con HTML renderizado por Laravel y fixtures
+sintéticos, endpoints fetch simulados: escritorio 1366 y móvil 390; apertura,
+guardado, 422, confirmación y cierre sin navegación del documento; foco/Escape,
+campos de Usuarios a ancho completo y contraseña vacía; formulario sin JavaScript
+visible y precargado. Sin errores JavaScript. Estos checks de navegador no son
+una sesión E2E con autenticación/CSRF/MySQL reales: esa validación permanece
+pendiente en la instalación del responsable. No se modifican legacy, esquema,
+AGENTS.md, dependencias, autenticación ni infraestructura.
