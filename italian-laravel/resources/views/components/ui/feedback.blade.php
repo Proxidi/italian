@@ -1,6 +1,6 @@
-@props(['title', 'description' => null, 'variant' => 'banner', 'position' => 'center', 'duration' => 0, 'redirectUrl' => null, 'id' => 'success-feedback'])
+@props(['title', 'description' => null, 'variant' => 'banner', 'position' => 'center', 'duration' => 0, 'redirectUrl' => null, 'id' => 'success-feedback', 'autoOpen' => true])
 @if ($variant === 'dialog')
-    <dialog {{ $attributes->class('ui-feedback-dialog ui-feedback-dialog--'.$position) }} data-feedback-dialog data-duration="{{ $duration }}" @if ($redirectUrl) data-redirect-url="{{ $redirectUrl }}" @endif aria-labelledby="{{ $id }}-title" @if ($description) aria-describedby="{{ $id }}-description" @endif>
+    <dialog {{ $attributes->class('ui-feedback-dialog ui-feedback-dialog--'.$position) }} @if ($autoOpen) data-feedback-dialog @endif data-duration="{{ $duration }}" @if ($redirectUrl) data-redirect-url="{{ $redirectUrl }}" @endif aria-labelledby="{{ $id }}-title" @if ($description) aria-describedby="{{ $id }}-description" @endif>
         <div class="ui-feedback-dialog__symbol" aria-hidden="true">
             <svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34"/><path d="m24 40 11 11 22-24"/></svg>
         </div>
