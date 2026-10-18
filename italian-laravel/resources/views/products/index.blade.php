@@ -7,13 +7,20 @@
     </header>
     <section class="products-cards" aria-label="Productos">
         @foreach ([['Productos', 'Productos', 'coffe2.png', 'yellow'], ['Insumos', 'Insumos', 'unit.png', 'green'], ['Unidades', 'Gr,Kg,Lts', 'rule.png', 'white'], ['Costo de Venta', 'Costo de Venta', 'rule.png', 'white']] as [$label, $subtitle, $image, $tone])
-            @php($available = $label === 'Unidades' && auth('web')->user()->can('products.units.view'))
+            @php
+                $destination = match ($label) {
+                    'Unidades' => ['products.units.index', 'products.units.view'],
+                    'Insumos' => ['products.ingredients.index', 'products.ingredients.view'],
+                    default => null,
+                };
+                $available = $destination && auth('web')->user()->can($destination[1]);
+            @endphp
             @if ($available)
-                <a class="products-card products-card--{{ $tone }}" href="{{ route('products.units.index') }}">
+                <a class="products-card products-card--{{ $tone }}" href="{{ route($destination[0]) }}">
                     <div class="products-card__heading"><img src="{{ asset('images/authenticated/'.$image) }}" width="65" height="65" alt=""><div><h2>{{ $label }}</h2><p>{{ $subtitle }}</p></div></div>
                     <div class="products-card__footer"><span>{{ $label }}</span><span class="products-badge">Click here</span></div>
                 </a>
-            @elseif ($label !== 'Unidades')
+            @elseif ($destination === null)
                 <article class="products-card products-card--{{ $tone }}" aria-disabled="true">
                     <div class="products-card__heading"><img src="{{ asset('images/authenticated/'.$image) }}" width="65" height="65" alt=""><div><h2>{{ $label }}</h2><p>{{ $subtitle }}</p></div></div>
                     <div class="products-card__footer"><span>{{ $label }}</span><span class="products-badge products-badge--pending">Pendiente de migración</span></div>

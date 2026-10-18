@@ -405,4 +405,5 @@
 
 
 .ui-list__action--green { border-color: #008d4c; background: #00a65a; }
+.ui-list__action--cyan { border-color: #00acd6; background: #00c0ef; }
 .ui-list__button--default { color: #444; background: #fff; border-color: #ddd; }

@@ -109,6 +109,9 @@ Los providers propios inspeccionados no agregan esas rutas ni un bypass de Gate.
 | `GET /Medidas`, `GET /Medidas/export` | `auth:web` + `can:products.units.view`; catálogo global de unidades. |
 | `POST /Medidas` | Además exige `products.units.create`; inserta únicamente Nombre. |
 | `PUT /Medidas/{unit}` | Además exige `products.units.update`; binding numérico, cambia únicamente Nombre. |
+| `GET /Insumos`, `GET /Insumos/export` | `auth:web` + `can:products.ingredients.view`; listado y descargas globales. |
+| `GET /Insumos/{ingredient}/conversiones` | Mismo permiso de lectura; operaciones del insumo con relaciones válidas. |
+| `PUT /Insumos/{ingredient}/conversiones/{conversion}` | Además exige `products.ingredients.conversions.update`; binding hijo acotado al insumo y comprobación transaccional. Solo Bodega/Pedido. |
 
 Registro, recuperación/verificación/actualización de contraseña y perfil conservan
 controladores, vistas y/o rutas scaffold. **No son funcionalidades activas por el
@@ -250,8 +253,8 @@ Comprobado en [AuthenticatedNavigation](../italian-laravel/app/Support/Authentic
 - Perfil visible e inerte; logout POST con CSRF en header/sidebar.
 - Destinos con permiso se ocultan cuando `can()` lo deniega; grupos vacíos se
   eliminan. Un destino sin ruta disponible queda inerte con aviso de pendiente.
-- Inicio, Usuarios, Configurar y el panel de Productos/Medidas tienen destinos
-  activos. Las tarjetas/enlaces restantes siguen pendientes; ver secciones 20–21.
+- Inicio, Usuarios, Configurar, Productos/Medidas e Insumos tienen destinos
+  activos. Las tarjetas/enlaces restantes siguen pendientes; ver secciones 20–23.
 - CSS propio declara scroll separado y JS nativo maneja acordeón, colapso y móvil.
   Esa implementación está presente; apariencia, accesibilidad e interacción reales
   no se certificaron mediante navegador en esta revisión.
@@ -897,9 +900,10 @@ de unidades necesarias en modelos consumidores y DDL/datos dirigidos del dump.
 No se importó italian.sql ni se consultó una BD compartida.
 
 El panel contiene cuatro tarjetas: Productos, Insumos, Unidades (Medidas) y Costo
-de Venta. Solo Unidades es funcional en esta etapa; las otras tres conservan
+de Venta. En la etapa 1 solo Unidades es funcional; las otras tres conservan
 su presencia visual, deshabilitadas como pendientes. No se activan listados/CRUD
-de Productos, Insumos, fórmulas, costos ni módulos consumidores.
+de Productos, Insumos, fórmulas, costos ni módulos consumidores en esa entrega.
+Estado posterior: Insumos se activa en la etapa 2, sección 23.
 
 Medidas lista todas las unidades, globalmente, ordenadas por Nombre. La tabla
 legacy muestra Nombre y Editar, búsqueda/orden, 50 filas por página,
@@ -1032,8 +1036,10 @@ contra CodeIgniter ni la BD real.
 Pendientes: activación de permisos en el destino confirmado, prueba de MySQL real
 (collation/longitud/autoincrement y restricciones instaladas), sesiones/CSRF en
 entorno completo y observación de consumidores coexistentes. La política de
-eliminación y una eventual gestión de conversiones requieren otra decisión;
-Insumos/Costos/fórmulas/Productos avanzados y demás módulos siguen fuera de alcance.
+eliminación sigue pendiente; la gestión posterior de conversiones de Insumos
+se limita al recorrido demostrado de la sección 23;
+Costos/fórmulas/Productos avanzados y demás módulos siguen fuera de alcance;
+el estado posterior de Insumos y sus conversiones se documenta en la sección 23.
 Sin cambios en legacy, esquema, autenticación, dependencias, infraestructura o
 AGENTS.md. Esta entrega se publicó en `master` como `c42e3a76`.
 
@@ -1171,3 +1177,211 @@ harness en `/tmp/italian-ui-visual/`; no acredita una sesión E2E sobre BD real.
 No se modificaron legacy, esquema, dependencias, infraestructura, AGENTS.md,
 autenticación o permisos. Vite solo registra los assets compartidos. Para probar
 esta entrega no se necesitan nuevos seeders ni escrituras de configuración.
+
+La estandarización de esta sección se publicó en master como `dc2197d2`.
+
+## 23. Productos, etapa 2: Insumos y conversiones (2026-10-18)
+
+### Recorrido demostrado y límite del alta
+
+Fuentes dirigidas: Insumos::index/save/checarBanderas/consultarOperacionesInsumo/
+actualizarOperaciones; Productos (no contiene CRUD adicional de Insumos);
+Mdl_productos::getInsumos/getCategorias/getUnidades y escritores/lectores de
+conversiones; productos/insumos/list.php; Mdl_remesas::getGrupos; Backend_lib,
+Mdl_backend, rutas; consumidores puntuales de Inventario, Pedidos y Ventas;
+DDL, catálogos y permisos relevantes de italian.sql. Dump leído, nunca importado;
+no representa necesariamente producción.
+
+**Alta no funcional demostrada:** la vista la marca «No terminado aún», comenta
+Guardar y envía por AJAX a **Insumos/saveDontExist**. No existe ese método ni alias
+en routes.php; el 404_override es Seguridad, no un guardado alternativo. Por tanto
+el formulario no acredita un alta efectiva. Laravel conserva Agregar Insumo
+deshabilitado y explica «Alta pendiente de definición», sin POST/store ni permiso
+de creación. No se añade un formulario que prometa guardar ni una animación de
+alta basada solo en el código de éxito de ese AJAX inalcanzable.
+
+El método distinto **Insumos::save()**, no conectado por esa vista, intenta:
+
+| Rama | Escritura pretendida | Problemas comprobados |
+| --- | --- | --- |
+| Base | INSERT tbl_insumos: Nombre, clave_pedido, categorias_insumos_id, unidad_id, unidad_pedido, unidad_final, inv_produccion, inv_fisico. | Omite Pedido_Pasteleria, Analisis_CV y Costo_Venta, NOT NULL sin DEFAULT en el dump. No escribe pedido aunque lea la bandera; queda DEFAULT 1. Usa unidad 13 si faltan producción/pedido. No valida texto, longitudes ni referencias en servidor. |
+| Producción | Siete filas en tbl_inventario_productos, plazas **1–7**, stocks y Cantidad=0. | IDs fijos, no consulta catálogo ni decide altas posteriores de plazas. |
+| Físico | Siete filas tbl_captura_inventario con cantidades cero, unidades Piso/Bodega/Total recibidas, Bandera=0, Centinela=1; luego tbl_insumos_inventario con Nombre/insumo_id/Bodega/Piso/Total y DLC/Pedido=*,1. | Chequea existencia pero ambos caminos INSERT; no hace UPDATE. formula_pedido se ignora. Transacciones separadas permiten datos parciales; banderaError puede perder un fallo previo al sobrescribirse con éxito posterior. |
+| Remesa | Construye grupo_id=1, insumo_id, unidad_id, grupo_rol_id='*,1', Nombre='*,1'. | Vuelve a insertar **dataIF** (inexistente si no se activó Físico, duplicada si sí) en tbl_captura_inventario y envía ese array a tbl_insumos_inventario, que no tiene grupo_id/unidad_id/grupo_rol_id. Nunca inserta tbl_insumos_gastos; ignora categoría y límite elegidos. |
+| Pedido | Lee bandera, clave, unidad y formula_pedido. | Guarda clave/unidad en la fila base, pero no persiste la bandera ni la fórmula elegida. No hay inicialización adicional demostrada. |
+
+La vista ofrece categoría/nombre y Sí/No para producción/físico/remesa/pedido;
+condiciona unidades, fórmulas (por defecto *,1), clave y categoría/límite de remesa
+mediante JS y required HTML. checarBanderas exige al menos un destino; no hay
+validación servidor equivalente para todos los demás campos. getGrupos excluye
+24/26 de tbl_grupo_gastos. Estos datos describen la intención del formulario,
+**no una regla aprobada que permita completar sus ramas rotas**.
+
+La necesidad de preparar existencias y capturas por plaza está respaldada por los
+lectores de esos módulos, pero no puede decidirse qué plazas inicializar, qué
+campos omitidos usar ni cómo crear Remesas con seguridad. Se detiene solo el alta;
+no se reproducen escrituras corruptas ni se crean filas por deducción. Hace falta
+una definición del equipo antes de habilitarla. Tampoco existe edición general
+de Nombre/categoría/unidades/banderas ni eliminación en este recorrido. Costo de
+Venta es otra pantalla y no se migra aquí.
+
+### Lectura, relaciones y unidades
+
+Lista global sin filtro de plaza ni banderas, INNER JOIN a categoría y tres
+unidades, como Mdl_productos. Laravel modela Ingredient, IngredientCategory e
+IngredientConversion y reutiliza MeasurementUnit. No crea catálogos ni carga
+opciones que solo necesitaría el alta bloqueada.
+
+- tbl_insumos: Nombre VARCHAR(100), clave_pedido VARCHAR(45), categoría y las tres
+  unidades; se conserva toda la fila, incluidos costos, categorías de pedido,
+  banderas y orden de captura. tbl_categorias_insumos es la categoría de insumo,
+  distinta de tbl_grupo_gastos y de las categorías de pedido/quebranto.
+- tbl_unidades: unidad_id = inicial/producción, unidad_final = resultado de
+  inventario, unidad_pedido = pedido. **La vista legacy intercambia UnidadPedido
+  y UnidadFinal bajo U Fin/U Ped. Laravel corrige la correspondencia** en tabla,
+  Copy, XLSX y PDF; conserva encabezados y los tres datos, sin modificar IDs.
+- tbl_insumos_inventario: id PK, insumo_id FK **no única**, Nombre y operaciones
+  Bodega/Piso VARCHAR(200), Total/DLC/Pedido VARCHAR(50), CVI/CVG VARCHAR(20).
+  Sin timestamps. Solo Bodega/Pedido son editables por esta pantalla.
+
+tbl_captura_inventario, tbl_insumos_gastos, tbl_inventario_productos, tbl_pedidos,
+tbl_platillos_vendidos, tbl_productos_insumos y tbl_respaldos_inventario declaran
+FKs a Insumos sin cascadas de borrado en el dump. Hay historial adicional con IDs
+copiados; no se afirma que estas sean todas las referencias posibles de producción.
+No se implementa DELETE, desactivación, SoftDeletes ni modificación del esquema.
+
+IngredientsListing encapsula los joins/filtros y las seis columnas exportables:
+# / Nombre / Clave Ped / U Ini / U Fin / U Ped. Paginación SQL de **300**, como la
+pantalla DataTables; orden inicial **ID ASC**, correspondiente al orden implícito
+de la primera columna de DataTables (el modelo previo ordenaba Nombre antes de
+ese orden cliente). Se pueden ordenar las seis columnas con lista cerrada y
+desempate por ID, buscar literalmente (incluidos %, _ y !) sobre datos visibles.
+Excel/PDF «Datos Insumos» usan integraciones instaladas y consultas por lotes,
+conservan todo el resultado filtrado/ordenado e ignoran page; omiten Operaciones.
+Copy conserva título y solo página visible. XLSX es texto seguro; PDF escapa HTML
+y desactiva recursos remotos/PHP/JS. No se promete memoria constante del documento.
+
+### Conversiones: contrato y escritura migrada
+
+La acción visible Operaciones consulta **todas** las filas de conversión del
+insumo y abre «Configurando Insumo», con Bodega/Pedido/Editar. El modal de edición
+solo envía esos dos campos y el ID de la fila. actualizarOperaciones valida
+required y una expresión regular de pares operador,número, luego UPDATE por ID
+de Bodega/Pedido. No toca unidades, existencias ni otros campos y no recalcula
+historial. El regex legacy permite más pares que algunos consumidores soportan,
+admite separadores omitidos y no excluye divisiones por cero.
+
+| Campo | Consumidor comprobado y significado | Ejemplo |
+| --- | --- | --- |
+| Bodega (editable) | Inventario::consultarBodega → Mdl_inventario::getOperacionBodega → _calcularFormula. Convierte la captura de bodega antes de sumarla con Piso. Ejecuta como máximo tres pares en orden, sin precedencia algebraica. | *,25 convierte 2 cajas en 50 unidades; -,615,/,1000 transforma 1615 en 1. |
+| Pedido (editable) | Pedidos::conversorPedido → Mdl_inventario::getOperacionPedido; se usa al cuadrar, recibir y completar faltantes. Solo ejecuta **un** par; con más devuelve 0. Guarda el resultado en Cantidad_Final. | *,150 convierte 2 unidades de pedido en 300 de inventario; /,1000 transforma 1500 en 1.5. |
+| Piso (preservado) | Inventario::consultarPiso, mismo motor, convierte captura de piso. | -,615,/,1000 representa descontar tara y convertir escala. |
+| Total (preservado) | Inventario::consultarTotal convierte la suma de Bodega/Piso, después de sus conversiones. | /,25 transforma una suma de 50 en 2. |
+| DLC (preservado) | Existen Inventario::consultarDLC y Mdl_inventario::getOperacionDLC, pero no se encontraron llamadas al método privado consultarDLC. Su efecto activo no queda demostrado por esa definición; no se migra ese flujo. | /,1000 expresa gramos a kilogramos cuando esas sean las unidades del insumo; no acredita su aplicación efectiva en DLC. |
+| CVI/CVG (preservados) | Ventas::conversorOperacionCVI/CVG y Mdl_ventas, conversiones para análisis de costos; lectores admiten un par. | *,2 duplica el valor de entrada. No se activan aquí costos ni Ventas. |
+
+Los ejemplos explican la aritmética; las dimensiones concretas dependen del
+insumo y sus unidades, no del nombre de la columna. Laravel **guarda el contrato
+textual compatible**, no evalúa expresiones ni migra el motor de Inventario/Pedidos.
+Los nuevos valores afectan cálculos futuros de CodeIgniter si ambas aplicaciones
+comparten realmente la BD; no se recalculan cantidades almacenadas o historial.
+
+CompatibleConversion/Form Request valida longitudes del esquema, pares cerrados
+con *, +, -, /, coeficientes decimales no negativos, separadores completos,
+operandos finitos y divisor distinto de cero. Bodega admite hasta tres pares,
+Pedido uno, por las capacidades efectivas de sus consumidores. Espacios externos
+se recortan por middleware; no se altera/reinterpreta silenciosamente una fórmula
+existente. **Diferencia de seguridad:** se rechazan cadenas que el editor legacy
+aceptaba pero los consumidores ignoraban o reducían a cero. No se modifican
+operaciones existentes hasta un guardado válido y explícito.
+
+UpdateIngredientConversion usa una transacción, bloqueo de fila y binding hijo
+acotado al insumo. Recomprueba referencias y que haya exactamente una conversión
+con el ID esperado. Sin filas muestra vacío (sin fabricar defaults); con varias
+lista los datos pero bloquea edición con explicación y rechaza PUT. Los lectores
+legacy toman una fila sin orden y no puede deducirse cuál debe gobernar. Cambiar
+el ID para editar una conversión de otro insumo, un ID obsoleto o una referencia
+inexistente devuelve error/404 sin escrituras. Locks coordinan escritores Laravel,
+no aseguran coordinación con todos los escritores CodeIgniter ni certifican
+concurrencia MySQL. Cada UPDATE escribe exclusivamente Bodega/Pedido.
+
+### Permisos, UI y activación
+
+Backend_lib controla las URLs vía menú/Leer. Dump: menús 41 Insumos, 42
+Insumos/save, 212 consultarOperacionesInsumo y 279 actualizarOperaciones tienen
+Leer=1 para rol 3 Gerente; Dueño tiene Leer=0 en 41/42 y no hay otras concesiones
+en esos menús. La consulta LIKE de getID no se copia a Laravel. No certifica
+permisos desplegados ni convierte mostrar Agregar en un alta funcional.
+
+IngredientsPermissionsSeeder crea **solo** products.ingredients.view y
+products.ingredients.conversions.update (`web`), inicialmente para root. Rutas y
+Form Requests comprueban lectura/escritura; el panel products.view sigue siendo
+independiente. Sidebar y tarjeta Insumos se activan según lectura; no se amplían
+permisos de Usuarios/Configurar/Medidas, otros roles ni autenticación.
+
+**Activación pendiente en la instalación del responsable:** después de confirmar
+conexión/destino y root/web, provisionar únicamente
+`sail artisan db:seed --class=IngredientsPermissionsSeeder`.
+No ejecutar DatabaseSeeder, migraciones ni importar el dump. El seeder conserva
+permisos ajenos/directos y asignaciones de usuarios; repetirlo restablece la matriz
+inicial de sus dos permisos, como los seeders previos. Aquí se ejecutó únicamente
+en SQLite efímera. No se cambian seeders anteriores para activarlo por accidente.
+
+Blade/CSS/JS propios reutilizan x-ui.* y products.layout. Operaciones conserva
+modal de consulta y modal de edición, con botones verde/cian, campos, mensajes,
+Escape/foco, errores anunciados y reapertura con valores inválidos, bloqueo de
+doble envío/restauración pageshow. La consulta usa GET autorizado con enlace
+real; la escritura PUT con CSRF, seguida de redirect/GET. Se conservan filtros y
+página tras guardar. Éxito «Insumo actualizado!!», check animado superior derecho,
+sin OK y **1500 ms**, como ese recorrido legacy. No se dispara otra navegación
+desde el temporizador y nunca se muestra éxito con errores. Sin nuevas dependencias.
+
+### Validación y decisiones pendientes
+
+IngredientsTest: **43 pruebas / 337 aserciones**. Regresión combinada con
+ProductsUnitsTest, ConfigurationTest y UsersReadTest: **135 pruebas / 1157
+aserciones**, todas correctas. PHP 8.5.11 / PHPUnit 12.5.39, imagen existente
+italian-cloud-php:8.5 con --network none, conexión nueva SQLite :memory: explícita,
+caches/vistas en /tmp. Fixtures sintéticos, sin migraciones/seeders en MySQL,
+importación, conexión ni escrituras sobre una BD compartida.
+
+Cobertura nueva: invitados/cinco roles, permisos independientes/directos y seeder
+repetible, enlaces del panel/sidebar; alcance global y joins, unidades corregidas,
+escape, búsqueda literal, seis órdenes y páginas de 300; XLSX real de 505 filas
+filtradas (supera el lote 500), orden/columnas/texto seguro; PDF real con fuente
+HTML inspeccionada y opciones seguras; gramática/longitudes de conversiones,
+cuatro operadores, cadenas compatibles, entradas inválidas, división por cero,
+rollback tras fallo después del UPDATE, campos y tablas relacionados intactos,
+relaciones inexistentes, IDs cruzados/obsoletos y conversiones cero/múltiples.
+Comprueba ausencia de POST/alta, edición general y DELETE, en vez de simular un
+alta que no está habilitada. La edición no necesita inicialización ni efectos
+secundarios: se verifica que existencias, remesas, pedidos e historial no cambian.
+
+Vite compila a /tmp/italian-ingredients-vite-build usando dependencias existentes;
+Pint sobre PHP cambiado, node --check de products.js y git diff --check pasan.
+Harness externo de render Laravel: **1 prueba / 12 aserciones**. Chromium/Playwright
+sobre esas vistas reales con fixtures: escritorio 1366 y móvil 390, Copy seguro
+sin acciones, unidades bajo encabezados correctos, enlaces/estados vacíos,
+alta inerte, diálogos consulta/edición, datos con comillas/HTML escapados,
+foco/Escape/regreso al listado, errores/reapertura, duplicados bloqueados,
+éxito sin OK y cierre a 1500ms, reduced-motion, doble envío y restauración
+pageshow, sin errores JS. Capturas inspeccionadas en
+/tmp/italian-ingredients-visual. No es una sesión E2E contra CodeIgniter/MySQL.
+
+Archivos: modelos Ingredient/IngredientCategory/IngredientConversion,
+IngredientsListing, CompatibleConversion, IngredientsReadRequest y
+SaveIngredientConversionRequest, UpdateIngredientConversion, IngredientsController,
+IngredientsPermissionsSeeder, vista products/ingredients y IngredientsTest;
+rutas, navegación, panel, CSS/JS de Productos y variante cian del componente
+visual compartido. No se eliminaron archivos ni cambiaron AGENTS.md, legacy,
+esquema, autenticación, dependencias, lockfiles, infraestructura o Vite config.
+Entrega local, sin publicar ni desplegar en esta intervención.
+
+Pendiente con el equipo: alta real de Insumos (campos obligatorios, flags y
+conversiones iniciales, plazas actuales/futuras y contrato correcto de Remesas);
+resolver filas duplicadas/ausentes de conversión si aparecen en una instalación;
+decidir si se amplían los motores consumidores en una etapa posterior, antes de
+aceptar cadenas más largas. No se presupone necesidad de editar catálogo general
+ni eliminar insumos desde esta pantalla. Pendiente validación con datos reales:
+permisos, relaciones instaladas, charset/collation, locks/concurrencia MySQL,
+sesiones/CSRF E2E y efectos visibles de las conversiones en CodeIgniter coexistente.

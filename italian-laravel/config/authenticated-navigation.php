@@ -103,6 +103,7 @@ $destinations['usuarios.accesos'] = [
 foreach ([
     'productos.panel' => ['products.index', 'products.view'],
     'medidas.panel' => ['products.units.index', 'products.units.view'],
+    'insumos.panel' => ['products.ingredients.index', 'products.ingredients.view'],
     'configuracion.panel' => ['configuration.index', 'configuration.view'],
     'configuracion.fechas' => ['configuration.dates', 'configuration.upload-window.view'],
     'configuracion.notificaciones' => ['configuration.notifications', 'configuration.notifications.view'],

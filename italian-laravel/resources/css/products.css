@@ -30,5 +30,9 @@ a.products-card:hover .products-card__footer { background: #f8f8f8; }
 .products-field { display: grid; grid-template-columns: 25% minmax(0, 1fr); align-items: center; gap: 8px; padding: 20px; }
 .products-field label { text-align: right; }
 .products-field-error { grid-column: 2; margin: 0; color: #a94442; }
+.ingredients-options { flex-wrap: wrap; gap: 10px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
+.ingredients-conversions-body { padding: 15px; }
+.ingredients-field-help { grid-column: 2; margin: 0; color: #666; }
 @media (max-width: 1100px) { .products-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; } .products-card__heading { padding: 15px; gap: 10px; } .products-card h2 { font-size: 23px; } }
 @media (max-width: 600px) { .products-cards { grid-template-columns: 1fr; } .products-field { grid-template-columns: 1fr; } .products-field label { text-align: left; } .products-field-error { grid-column: 1; } }
+@media (max-width: 600px) { .ingredients-field-help { grid-column: 1; } }

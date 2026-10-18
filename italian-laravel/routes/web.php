@@ -4,6 +4,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ConfigurationController;
+use App\Http\Controllers\IngredientsController;
 use App\Http\Controllers\ProductsController;
 use App\Http\Controllers\UsersReadController;
 use App\Http\Controllers\UsersWriteController;
@@ -47,6 +48,16 @@ Route::middleware('auth:web')->group(function () {
             ->middleware('can:products.units.create')->name('products.units.store');
         Route::put('/Medidas/{unit}', [ProductsController::class, 'update'])
             ->middleware('can:products.units.update')->whereNumber('unit')->name('products.units.update');
+    });
+
+    Route::middleware('can:products.ingredients.view')->scopeBindings()->group(function () {
+        Route::get('/Insumos', [IngredientsController::class, 'index'])->name('products.ingredients.index');
+        Route::get('/Insumos/export', [IngredientsController::class, 'export'])->name('products.ingredients.export');
+        Route::get('/Insumos/{ingredient}/conversiones', [IngredientsController::class, 'index'])
+            ->whereNumber('ingredient')->name('products.ingredients.conversions');
+        Route::put('/Insumos/{ingredient}/conversiones/{conversion}', [IngredientsController::class, 'update'])
+            ->middleware('can:products.ingredients.conversions.update')->whereNumber(['ingredient', 'conversion'])
+            ->name('products.ingredients.conversions.update');
     });
 
     Route::middleware('can:configuration.upload-window.view')->group(function () {
