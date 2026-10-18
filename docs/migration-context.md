@@ -105,11 +105,15 @@ Los providers propios inspeccionados no agregan esas rutas ni un bypass de Gate.
 | `PUT /Opciones/fechas` | Además exige `configuration.upload-window.update`; valida y actualiza el único registro existente. |
 | `GET /Usuarios/notificaciones`, `GET /Usuarios/notificaciones/export` | `auth:web` + `can:configuration.notifications.view`; esta pantalla pertenece a Configurar. |
 | `PUT /Usuarios/notificaciones` | Además exige `configuration.notifications.update`; solo cambia la fecha del único registro existente. |
+| `GET /Productos` | `auth:web` + `can:products.view`; panel de Productos, primera etapa. |
+| `GET /Medidas`, `GET /Medidas/export` | `auth:web` + `can:products.units.view`; catálogo global de unidades. |
+| `POST /Medidas` | Además exige `products.units.create`; inserta únicamente Nombre. |
+| `PUT /Medidas/{unit}` | Además exige `products.units.update`; binding numérico, cambia únicamente Nombre. |
 
 Registro, recuperación/verificación/actualización de contraseña y perfil conservan
 controladores, vistas y/o rutas scaffold. **No son funcionalidades activas por el
 solo hecho de existir esos archivos.** No hay rutas activas de perfil, registro,
-`dashboard` ni Medidas. En Usuarios están activas alta/edición administrativa; Eliminar sigue ausente.
+`dashboard`. Medidas está activa según la sección 21. En Usuarios están activas alta/edición administrativa; Eliminar sigue ausente.
 `resources/views/paneles/`, `dashboard.blade.php` y otros restos tampoco prueban el
 uso de esas vistas: el controlador activo sirve `inicio.index`.
 
@@ -246,8 +250,8 @@ Comprobado en [AuthenticatedNavigation](../italian-laravel/app/Support/Authentic
 - Perfil visible e inerte; logout POST con CSRF en header/sidebar.
 - Destinos con permiso se ocultan cuando `can()` lo deniega; grupos vacíos se
   eliminan. Un destino sin ruta disponible queda inerte con aviso de pendiente.
-- Inicio y las dos consultas de Usuarios tienen destinos activos; el resto de
-  tarjetas/enlaces no constituye módulos implementados.
+- Inicio, Usuarios, Configurar y el panel de Productos/Medidas tienen destinos
+  activos. Las tarjetas/enlaces restantes siguen pendientes; ver secciones 20–21.
 - CSS propio declara scroll separado y JS nativo maneja acordeón, colapso y móvil.
   Esa implementación está presente; apariencia, accesibilidad e interacción reales
   no se certificaron mediante navegador en esta revisión.
@@ -510,7 +514,7 @@ y DatabaseSeeder scaffold no construyen una BD legacy funcional: no ejecutarlos
 como preparación automática. La existencia de un seeder no acredita ejecución
 fuera del aislamiento aquí descrito.
 
-## 12. Medidas y otros módulos aún sin migrar
+## 12. Medidas y otros módulos: auditoría inicial y estado actualizado
 
 Comprobado en legacy: `Medidas::index()` usa `Mdl_productos::getUnidades()` sobre
 `tbl_unidades`, ordenadas por Nombre y sin filtro de plaza. La vista presenta Nombre
@@ -525,7 +529,8 @@ identificó eliminación en esa pantalla. No se deduce de estos archivos que tod
 la BD carezca de factores de conversión.
 
 Medidas como piloto, `medidas.view`/`medidas.update` y alcance de solo renombrar eran
-propuestas heredadas; no hay rutas/controlador de Medidas activo en Laravel.
+propuestas heredadas. La primera etapa de Productos ya tiene Medidas activa;
+capacidades definitivas de esta entrega y diferencias en la sección 21.
 El nombre Medidas corresponde aquí al catálogo de `tbl_unidades`, distinto del
 módulo legacy `Unidades` de consultas/estadísticas.
 
@@ -763,7 +768,10 @@ mismas herramientas DataTables. No se encontró alta o eliminación en este reco
 ### Dependencias preservadas y discrepancia pendiente
 
 - `Mdl_opciones::getNumeroDias()` devuelve la primera fila como `Dias`.
-  `Inventario` lo usa al validar antigüedad de DLC (fallback 1 sin fila).
+  **Corrección tras el trazado completo del consumidor:** el método privado
+  `Inventario::fechaCorrecta()` lee Dias (fallback 1), pero solo calcula una fecha
+  que no compara después; tampoco se encontró ninguna llamada a ese método.
+  No está acreditado un límite de antigüedad DLC efectivo basado en esta opción.
 - `Ventas::store2()` consulta la fila, pero si existe fuerza **30 días** en vez
   de leer `Dias`; sin fila usa 1. Su mensaje menciona otro plazo. La migración de
   Configurar guarda el valor; **no corrige Ventas ni decide qué plazo debe usar**.
@@ -876,3 +884,155 @@ una instancia completa y efectos visibles en Inicio/consumidores legacy con una
 BD realmente compartida. Definir el plazo de Ventas y qué hacer ante múltiples
 filas. No se migraron Inicio, Ventas, DLC, Eliminar ni funcionalidades adicionales;
 no se cambió autenticación, SHA-1, esquema, SQL, dependencias o AGENTS.md.
+
+## 21. Productos, etapa 1: panel y Unidades/Medidas (2026-10-18)
+
+### Recorrido comprobado y límites
+
+Se inspeccionaron Productos::index/actualizarUnidad, Medidas::index,
+Mdl_productos::getUnidades/actualizarUnidad y sus consultas de catálogos,
+panel_productos.php, unidades/list.php, routes.php, Backend_lib/Mdl_backend,
+el inicializador tbl_unidades de assets/js/tables.js y exclusivamente referencias
+de unidades necesarias en modelos consumidores y DDL/datos dirigidos del dump.
+No se importó italian.sql ni se consultó una BD compartida.
+
+El panel contiene cuatro tarjetas: Productos, Insumos, Unidades (Medidas) y Costo
+de Venta. Solo Unidades es funcional en esta etapa; las otras tres conservan
+su presencia visual, deshabilitadas como pendientes. No se activan listados/CRUD
+de Productos, Insumos, fórmulas, costos ni módulos consumidores.
+
+Medidas lista todas las unidades, globalmente, ordenadas por Nombre. La tabla
+legacy muestra Nombre y Editar, búsqueda/orden, 50 filas por página,
+Excel/PDF/Copy con título «Unidades Insumos». Editar abre un modal; envía
+id_editar/nombre_editar a Productos/actualizarUnidad. Ese controlador exige AJAX,
+pero no valida nombre, longitud o existencia del ID; Mdl_productos actualiza
+únicamente Nombre con WHERE id. Puede informar éxito aunque el ID no exista.
+La vista marca Nombre como required. La dependencia del controlador Productos
+es reparto histórico de responsabilidades; no constituye una regla de negocio.
+
+**Alta legacy incompleta:** Agregar Unidad abre #agregarUnidad y el formulario
+guardarNuevaUnidad, sin action ni listener/handler de guardado en el recorrido
+y assets inspeccionados. No se encontró inserción a tbl_unidades en los modelos
+de aplicación ni una acción de creación en Medidas/Productos. No se presenta ese
+scaffold como alta funcional comprobada. Esta entrega completa el alta solicitada
+explícitamente (incluida en la validación de la tarea), escribiendo solo Nombre;
+es una diferencia intencional respecto al formulario legacy incompleto.
+
+**Eliminar:** no existe control, endpoint o método de eliminación en el recorrido
+legacy de Medidas. Laravel no incorpora botón, permiso ni ruta DELETE; tampoco
+desactivación/SoftDeletes. Una futura eliminación necesitará decisión explícita
+y revisión de referencias. No hay una baja segura deducible de esta pantalla.
+
+### Persistencia, relaciones y efectos de renombrar
+
+El dump define tbl_unidades con id INT firmado autoincrement/PK y Nombre
+VARCHAR(50) NOT NULL. No hay timestamps, Estado, factores de conversión ni índice
+único del nombre. El dump contiene unidades como 1 Gramos, 2 Mililitros, 3 Piezas,
+5 Kilogramos, 10 Litros y 13 No Asignado; no acredita el catálogo de producción.
+No se crean ni reemplazan esas filas desde seeders de datos.
+
+Referencias comprobadas:
+
+| Tabla | Columnas | Relación en el dump |
+| --- | --- | --- |
+| tbl_insumos | unidad_id, unidad_pedido, unidad_final | FKs a tbl_unidades.id, sin cascadas de eliminación declaradas. |
+| tbl_insumos_gastos | unidad_id | FK a tbl_unidades.id, sin cascada declarada. |
+| tbl_captura_inventario | Unidad_Bodega, Unidad_Piso, Unidad_Total | FKs a tbl_unidades.id, sin cascadas declaradas. |
+| tbl_historial_completo_if | Unidad_Bodega, Unidad_Piso, Unidad_Total | Identificadores copiados de captura; sin FK declarada a unidades. |
+| tbl_productos | Ninguna directa | La unidad llega indirectamente por tbl_productos_insumos → tbl_insumos. |
+
+Mdl_productos usa joins de unidades para Insumos; Mdl_pedidos usa unidad_pedido,
+Mdl_remesas usa tbl_insumos_gastos.unidad_id y Mdl_inventario usa unidad_final o
+las tres unidades de captura. Son consumidores existentes, no migrados aquí.
+tbl_unidades_vendidas y tbl_unidades_pago son tablas distintas, no este catálogo.
+Familias y categorías de Insumos son necesarias en etapas futuras, pero no en
+el panel estático ni en el catálogo de unidades: no se agregan consultas o CRUD
+anticipados para ellas.
+
+Renombrar una unidad usada es permitido por el legacy y solo cambia su etiqueta.
+Laravel conserva el ID, referencias, cantidades y conversiones existentes, sin
+reescrituras masivas ni cambios de tipos de unidad. Los consumidores que resuelven
+Nombre por join mostrarán la nueva etiqueta también para registros anteriores.
+Esto no convierte cantidades; cambiar «Gramos» por «Kilogramos» sería un cambio
+semántico que el formulario no sabe resolver. No se infiere una conversión del
+nombre ni se renumeran IDs. Borrar una unidad referenciada sería rechazado por
+las FKs descritas; aun sin FKs, joins internos podrían ocultar registros huérfanos.
+
+### Autorización y activación
+
+Los menús relevantes del dump son 72 Productos, 56 Medidas y 256
+Productos/actualizarUnidad. Rol 3 Gerente tiene Leer=1 en los tres; Dueño
+tiene Leer=0 en 72/56, y no hay otras concesiones relevantes encontradas.
+Backend_lib controla cada URL mediante menú/Leer y no mediante visibilidad.
+El dump no certifica permisos instalados actualmente en otra instancia.
+
+ProductsPermissionsSeeder provisiona `web`: products.view, products.units.view,
+products.units.create y products.units.update, inicialmente solo a root/Gerente.
+Alta usa una capacidad nueva separada para completar el formulario solicitado;
+no concede acceso a otros roles. Rutas y Form Requests comprueban capacidades;
+alta/edición requieren lectura de unidades más la capacidad de escritura.
+El permiso del panel es independiente del de su subpantalla, siguiendo las
+comprobaciones por URL legacy. No se usa rol_id para autorizar ni hay bypass.
+Navegación Inicio/sidebar usa los mismos permisos y oculta destinos denegados.
+
+**Activación pendiente en la instalación del responsable:** tras comprobar destino
+de conexión y que exista root/web, ejecutar únicamente
+`sail artisan db:seed --class=Database\\Seeders\\ProductsPermissionsSeeder` desde
+italian-laravel. No ejecutar DatabaseSeeder, migraciones o importaciones para
+activar esta etapa. El seeder es idempotente, conserva otros permisos y permisos
+directos, limpia caché antes/después; restablece las relaciones de sus cuatro
+capacidades exclusivamente a root. Aquí solo se ejecutó en SQLite efímera.
+
+### Implementación y diferencias
+
+- ProductsController, MeasurementUnit Eloquent (tabla encapsulada, sin timestamps)
+  y Form Requests UnitsReadRequest/SaveUnitRequest. Rutas semánticas products.index,
+  products.units.index/store/update/export, URLs Productos/Medidas (sección 4).
+  No se replica el POST AJAX Productos/actualizarUnidad ni se activa /Unidades.
+- Alta: INSERT de Nombre con ID generado por la BD. Edición: UPDATE Nombre WHERE
+  id, con binding numérico y 404 para inexistentes; no se inventa éxito para IDs
+  ausentes. Cada escritura es una sola sentencia atómica; no hay escrituras
+  relacionadas que requieran una transacción adicional.
+- Nombre obligatorio, texto y hasta 50 caracteres por esquema, recortado por
+  middleware Laravel. Acepta tildes, comillas y nombres duplicados (sin inventar
+  una restricción unique). Solo se usan datos validados, nunca IDs/campos extra.
+- Blade y CSS/JS propios: tarjetas/colores/estructura legacy, modales dialog
+  nativos, Escape/cierre, errores en español, datos escapados también en atributos,
+  reapertura después de validación, confirmación temporal sin OK (1000 ms),
+  bloqueo de doble envío y restauración al volver, soporte de reduced-motion.
+  Se copiaron solo unit.png y rule.png del legacy; coffe2.png ya existía.
+- Búsqueda literal por Nombre, orden asc/desc con desempate por ID, paginación
+  servidor 50; Excel/PDF de todos los resultados filtrados/ordenados, Copy de la
+  página visible. Título «Unidades Insumos», sin exportar el control Editar.
+  Se reutilizan TabularSpreadsheet y exports.table, no vistas específicas de
+  Configurar/Usuarios; workbook texto para fórmulas y PDF escapado/sin remotos.
+  No se incorporan jQuery, DataTables, Bootstrap ni dependencias nuevas.
+
+### Validación y pendientes
+
+ProductsUnitsTest: **19 pruebas / 160 aserciones**, PHP 8.5.11/PHPUnit 12.5.39.
+Suite combinada ProductsUnitsTest + ConfigurationTest + UsersReadTest:
+**87 pruebas / 782 aserciones**, todas pasan. SQLite :memory: con fixtures mínimos,
+conexión explícita de pruebas y contenedor --network none; sin MySQL ni servicios
+compartidos. Incluye invitados/cinco roles, permisos independientes/faltantes,
+alta, edición con referencias/cantidades e historial intactos, validaciones,
+duplicados, tildes/comillas, ID inexistente, ausencia de DELETE, navegación,
+búsqueda literal/escape/orden/paginación, exportación XLSX real fuera de la página
+con fórmula como texto, PDF real y seeder repetible.
+
+Vite compila en /tmp/italian-products-vite-build; Pint sobre PHP cambiado,
+node --check y git diff --check pasan. Chromium/Playwright sobre HTML renderizado
+por Laravel con SQLite sintética: escritorio 1366 y móvil 390, cuatro tarjetas y
+assets cargados, solo una tarjeta activa, sin overflow horizontal, alta/edición,
+comillas/tildes, Escape/cierre, validación/reapertura, prevención de doble envío,
+restauración pageshow y cierre del aviso. Harness externo: 1 prueba / 6 aserciones;
+capturas /tmp/italian-products-visual inspeccionadas visualmente. No acredita E2E
+contra CodeIgniter ni la BD real.
+
+Pendientes: activación de permisos en el destino confirmado, prueba de MySQL real
+(collation/longitud/autoincrement y restricciones instaladas), sesiones/CSRF en
+entorno completo y observación de consumidores coexistentes. La política de
+eliminación y una eventual gestión de conversiones requieren otra decisión;
+Insumos/Costos/fórmulas/Productos avanzados y demás módulos siguen fuera de alcance.
+Sin cambios en legacy, esquema, autenticación, dependencias, infraestructura o
+AGENTS.md. Esta entrega no se ha publicado en GitHub.

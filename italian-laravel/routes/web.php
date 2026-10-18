@@ -4,6 +4,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ConfigurationController;
+use App\Http\Controllers\ProductsController;
 use App\Http\Controllers\UsersReadController;
 use App\Http\Controllers\UsersWriteController;
 use Illuminate\Support\Facades\Route;
@@ -36,6 +37,17 @@ Route::middleware('auth:web')->group(function () {
 
     Route::get('/Opciones', [ConfigurationController::class, 'index'])
         ->middleware('can:configuration.view')->name('configuration.index');
+
+    Route::get('/Productos', [ProductsController::class, 'index'])
+        ->middleware('can:products.view')->name('products.index');
+    Route::middleware('can:products.units.view')->group(function () {
+        Route::get('/Medidas', [ProductsController::class, 'units'])->name('products.units.index');
+        Route::get('/Medidas/export', [ProductsController::class, 'export'])->name('products.units.export');
+        Route::post('/Medidas', [ProductsController::class, 'store'])
+            ->middleware('can:products.units.create')->name('products.units.store');
+        Route::put('/Medidas/{unit}', [ProductsController::class, 'update'])
+            ->middleware('can:products.units.update')->whereNumber('unit')->name('products.units.update');
+    });
 
     Route::middleware('can:configuration.upload-window.view')->group(function () {
         Route::get('/Opciones/fechas', [ConfigurationController::class, 'dates'])

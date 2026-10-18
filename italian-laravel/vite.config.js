@@ -15,6 +15,8 @@ export default defineConfig({
                 'resources/js/users-read.js',
                 'resources/css/configuration.css',
                 'resources/js/configuration.js',
+                'resources/css/products.css',
+                'resources/js/products.js',
             ],
             refresh: true,
         }),
