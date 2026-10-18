@@ -105,7 +105,12 @@ Los providers propios inspeccionados no agregan esas rutas ni un bypass de Gate.
 | `PUT /Opciones/fechas` | Además exige `configuration.upload-window.update`; valida y actualiza el único registro existente. |
 | `GET /Usuarios/notificaciones`, `GET /Usuarios/notificaciones/export` | `auth:web` + `can:configuration.notifications.view`; esta pantalla pertenece a Configurar. |
 | `PUT /Usuarios/notificaciones` | Además exige `configuration.notifications.update`; solo cambia la fecha del único registro existente. |
-| `GET /Productos` | `auth:web` + `can:products.view`; panel de Productos, primera etapa. |
+| `GET /Productos` | `auth:web` + `can:products.view`; panel con destinos a Productos, Insumos y Medidas según sus permisos. |
+| `GET /Productos/list`, `GET /Productos/list/export` | `auth:web` + `can:products.catalog.view`; catálogo global, filtro por familia y exportaciones. |
+| `GET /Productos/list/nuevo`, `POST /Productos/list` | Además exige `products.catalog.create`; alta de producto activo, sin inicializar otros módulos. |
+| `GET /Productos/{product}/formulas` | Lectura de catálogo + `products.formulas.view`; relaciones producto–insumo y cantidades en unidad_id del insumo. |
+| `POST /Productos/{product}/formulas` | Además exige `products.formulas.create`; asociación sin duplicados, cantidad/unidad válidas. |
+| `GET /Productos/{product}/formulas/{formula}/editar`, `PUT /Productos/{product}/formulas/{formula}` | Además exige `products.formulas.update`; binding hijo acotado, escritura transaccional solo de Cantidad. |
 | `GET /Medidas`, `GET /Medidas/export` | `auth:web` + `can:products.units.view`; catálogo global de unidades. |
 | `POST /Medidas` | Además exige `products.units.create`; inserta únicamente Nombre. |
 | `PUT /Medidas/{unit}` | Además exige `products.units.update`; binding numérico, cambia únicamente Nombre. |
@@ -904,6 +909,9 @@ de Venta. En la etapa 1 solo Unidades es funcional; las otras tres conservan
 su presencia visual, deshabilitadas como pendientes. No se activan listados/CRUD
 de Productos, Insumos, fórmulas, costos ni módulos consumidores en esa entrega.
 Estado posterior: Insumos se activa en la etapa 2, sección 23.
+Productos y Fórmulas se implementan posteriormente en la etapa 3 descrita al
+final de este documento; las limitaciones de esta sección corresponden a la
+entrega original de la etapa 1.
 
 Medidas lista todas las unidades, globalmente, ordenadas por Nombre. La tabla
 legacy muestra Nombre y Editar, búsqueda/orden, 50 filas por página,
@@ -1440,3 +1448,186 @@ visible y precargado. Sin errores JavaScript. Estos checks de navegador no son
 una sesión E2E con autenticación/CSRF/MySQL reales: esa validación permanece
 pendiente en la instalación del responsable. No se modifican legacy, esquema,
 AGENTS.md, dependencias, autenticación ni infraestructura.
+
+## Productos, etapa 3: catálogo y fórmulas (2026-10-18)
+
+### Recorrido y tablas comprobados
+
+Revisión dirigida de Productos::list/save/activarProducto/desactivarProducto,
+Formulas/Mdl_formulas, métodos de catálogo/escritura de Mdl_productos,
+productos/productos/list.php y vistas antiguas de formulas; tables.js para
+tbl_datos; Backend_lib/Mdl_backend; DDL/datos de familias, productos, relaciones,
+menús/permisos y FKs relevantes de italian.sql. Se siguieron
+Mdl_inventario::conversion y lectores de Mdl_unidades/Mdl_depositos para entender
+historial. No se importó el dump ni se consultó una instancia compartida.
+
+El recorrido activo es Productos → Productos/list. Lista global #, Clave, Nombre,
+Familia y botón cian «+» de Fórmula; filtro de familia; productos activos e
+inactivos, estos últimos rojo/naranja. DataTables tbl_datos: 80 filas, ID ASC,
+búsqueda/orden y Excel/PDF/Copy con título «Datos». La tabla del modal de fórmula
+no tiene búsqueda/exportación propia en este recorrido.
+
+Productos/save lee nombre/clave/familia_id y la vista marca los tres obligatorios.
+consultarExistencia rechaza Nombre **o** Clave repetidos. Mdl_productos::save
+inserta exclusivamente tbl_productos con Estado=1 en una transacción; no crea
+inventarios, plazas ni receta por defecto. DDL: Nombre varchar(100) UNIQUE,
+Clave varchar(50) UNIQUE, familia_id FK a tbl_familia_productos, Estado tinyint.
+No hay edición general ni DELETE de productos en este controlador.
+activarProducto/desactivarProducto solo actualizan Estado=1/0; no tienen botones
+en esta pantalla ni entradas específicas en tbl_menus del dump. No se migran.
+getProductos y Mdl_inventario::conversion tampoco filtran Estado: desactivar no
+equivale a retirar receta o impedir cualquier consumo por esos lectores.
+
+Formulas::index está comentado; no existen list/add aunque las vistas antiguas
+panel_formulas/list los enlazan. Formulas::update permite cambiar producto/insumo,
+pero no es el endpoint del editor activo. No se activan estos recorridos antiguos.
+
+La fórmula es el conjunto de filas de **tbl_productos_insumos**: id, producto_id,
+insumo_id, **Cantidad FLOAT**. FKs a tbl_productos.id y tbl_insumos.id sin cascadas;
+no hay índice UNIQUE del par, cabecera de receta, unidad persistida, orden,
+rendimiento, costo ni versión. El dump contiene **2562 filas**, **seis pares
+producto/insumo repetidos**, **seis cantidades cero** y ninguna negativa en esa
+tabla. El dump no certifica el estado actual de producción.
+
+### Cantidades, unidades y efectos secundarios
+
+El modal activo muestra Nombre / Insumo / Cantidad / Unidad / Editar / Eliminar.
+getFormulaModalLeer y consultarUnidad usan **tbl_insumos.unidad_id**. La selección
+unidad_id_formulas enviada por el formulario es ignorada por store: no se elige
+una dimensión independiente ni se convierte cantidad. Ejemplo: unidad_id=Gramos,
+Cantidad=7.7 expresa 7.7 en esa unidad para la asociación al producto; no se
+infiere una dimensión solo por el nombre del ingrediente.
+
+El catálogo getInsumosInventario exige inv_produccion=1 y joins a categoría y
+**unidad_final**, orden por ID. Existe una diferencia entre esa unidad de catálogo
+y la mostrada por el editor (unidad_id). Laravel conserva el catálogo y además
+exige unidad inicial válida; no sustituye unidad_id por unidad_final ni evalúa las
+conversiones de Insumos. Las asociaciones existentes siguen visibles/editables
+si conservan insumo/unidad_id válidos y no están duplicadas, aunque el insumo ya
+no sea elegible para nuevas altas, igual que la consulta activa legacy.
+
+Formulas/store evita repetir el par e inserta; no valida cantidades server-side.
+actualizarFormula (editor activo) actualiza solo Cantidad por ID e is_numeric,
+sin comprobar pertenencia al producto. Input de edición min=0, step=0.001; alta
+step=any sin min. No hay orden semántico de componentes ni operaciones encadenadas
+entre filas. Laravel usa ID para un orden estable, sin inventar un reordenador.
+
+Los escritores comprobados no calculan costos/rendimientos, cantidades derivadas
+ni existencias; no escriben Inventario, Remesas, Pedidos ni Ventas. Se conserva
+esa ausencia de efectos secundarios. Mdl_inventario::conversion(Clave) consulta
+Cantidad/insumo_id mediante la clave del producto, pero no se encontró una llamada
+directa en el PHP revisado. La definición no demuestra un consumo activo;
+consumidores dinámicos, externos o desplegados quedan pendientes de validación.
+
+Cambiar nombre de insumo/unidad cambia el texto por joins, sin cambiar Cantidad.
+Cambiar unidad_id reinterpretaría cantidades almacenadas sin conversión: no se
+migra ese cambio general de insumos. Cambiar flags/categoría/unidad_final afecta
+la elegibilidad del catálogo. Eliminar insumos encuentra las FKs de receta e
+históricos ya descritas en la etapa 2; no se habilita esa acción.
+
+### Eliminaciones y límites
+
+Formulas/delete hace DELETE físico por ID de tbl_productos_insumos, sin validar
+pertenencia, versionar receta ni modificar históricos. No se encontró FK entrante
+a la fila. tbl_platillos_vendidos guarda Clave, insumo_id, Cantidad, Unidad y Total;
+tbl_platillos_vendidos_resumen también referencia Clave. Son referencias/valores
+por producto/insumo, no por ID de fórmula. Mdl_unidades/Mdl_depositos unen reportes
+por Clave. Las FKs de históricos y receta bloquean borrados de productos
+referenciados sin cascada en el dump; cambiar Clave tampoco es una edición inocua.
+
+**Eliminar fórmula queda deshabilitado**, sin rutas DELETE/SoftDeletes. No se
+certifica qué debería pasar con procesos futuros o reconstrucciones históricas
+al retirar un componente: definir retirada/versionado con el equipo. No se
+migran edición/estado/borrado general de productos, ni el antiguo cambio de
+producto/insumo en Formulas::update. No se escogen/mezclan/borran duplicados.
+
+### Implementación y diferencias intencionales
+
+- Product/ProductFamily/ProductIngredient encapsulan las tres tablas nuevas;
+  reutilizan Ingredient/MeasurementUnit y sus catálogos. ProductsListing contiene
+  joins/filtros/orden y ProductFormulas elegibilidad/lectura. Dos controladores
+  separan catálogo y fórmulas sin ampliar ProductsController (panel/Medidas).
+- Rutas products.catalog.index/create/store/export y
+  products.formulas.index/edit/store/update. Se conserva /Productos/list y se
+  anidan fórmulas en /Productos/{product}/formulas con binding hijo acotado.
+- Form Requests: requeridos, longitudes reales, familia/insumo/unidad existentes,
+  duplicados Nombre/Clave y cantidades numéricas finitas **>=0** representables
+  en FLOAT (sin desbordar ni subdesbordar a cero). Tildes permitidas; step=any
+  conserva precisión de entrada del alta sin truncar a tres decimales. FLOAT
+  conserva precisión limitada temporal y SQLite no certifica redondeo MySQL.
+  Rechazar negativos en alta corrige incoherencia con min=0 de edición, sin
+  reescribir datos existentes. No se inventan cálculos de costo/rendimiento.
+- La unidad es derivada: JS muestra la del insumo y servidor compara unit_id con
+  unidad_id actual; si cambió desde la apertura rechaza el guardado. No persiste
+  unit_id. Edición solo cambia Cantidad y rechaza mover producto/insumo/unidad.
+- SaveFormula bloquea producto, relación e insumo en transacción y recomprueba
+  referencias/duplicados. Los pares repetidos se listan con aviso y se bloquea su
+  edición; huérfanos de insumo/unidad también permanecen visibles y bloqueados.
+  No se escriben productos con familia inválida. Alta de producto transforma una
+  violación UNIQUE concurrente en error de validación. Los locks coordinan
+  escritores Laravel, no certifican coordinación con CodeIgniter/concurrencia MySQL.
+- XLSX/PDF reutilizan integraciones y TabularSpreadsheet para todo el resultado
+  filtrado/ordenado ignorando page; consultas por lotes, XLSX como texto seguro,
+  PDF escapado/sin remotos/PHP/JS; sin columna de acciones. Copy solo página visible.
+- Blade reutiliza x-ui.listing/table/toolbar/pagination/sort-heading/table-action
+  y feedback. Solo se añadió icono «+» a action-icon. Productos inactivos coloreados,
+  tabla de receta con scroll local móvil. product-catalog.js se importa desde
+  products.js existente, sin nuevas dependencias ni configuración Vite.
+- Abrir/añadir/editar fórmulas usa fetch y refresca solo el panel. Éxitos arriba
+  derecha con check animado, sin OK y **1000 ms**: alta mantiene formulario abierto
+  con cantidad vacía; edición cierra editor y conserva consulta. Alta de producto
+  navega al listado tras el éxito como location.reload legacy. Errores 422 dentro
+  del formulario, sin éxito ni pérdida de valores; errores sesión/permisos/red y
+  respuestas inciertas nunca reenvían automáticamente. Duplicados de envío
+  bloqueados, foco/Escape y reduced-motion existentes conservados. Sin JS,
+  enlaces/formularios HTTP con CSRF siguen funcionando mediante secciones noscript;
+  unidad elegida del catálogo siempre debe coincidir con el insumo en servidor.
+
+### Permisos y activación
+
+Dump: Gerente (3) tiene Leer=1 para menús Productos (72), list (73), save (74),
+Formulas/store (34), update (35), delete (36), consultarFormula (37),
+consultarFormulaModal (38), actualizarFormula (39), consultarUnidad (40).
+Formulas raíz (32) tiene Leer=0. Dueño tiene Leer=0; no se encontraron concesiones
+de esos menús a otros roles. Backend_lib exige login/Leer mediante lookup LIKE;
+esa coincidencia de URLs no se copia ni autoriza operaciones nuevas.
+
+ProductCatalogPermissionsSeeder define exclusivamente products.catalog.view/create
+y products.formulas.view/create/update, guard web, inicialmente root. Lectura de
+catálogo requerida para todo; fórmulas exige además lectura y permiso por escritura.
+products.view del panel sigue independiente. Tarjeta Productos y entrada sidebar
+se activan con catalog.view, sin ampliar otros módulos/roles. No hay permisos de
+eliminar ni de edición/estado general del producto.
+
+**Activación pendiente en la instalación del responsable:** confirmar conexión y
+destino, luego `sail artisan db:seed --class=ProductCatalogPermissionsSeeder`.
+No ejecutar DatabaseSeeder, migraciones ni importar el dump. Aquí solo se ejecutó
+el seeder en fixtures SQLite :memory:. Repetible, conserva permisos ajenos/directos
+y asignaciones de usuarios, restablece la matriz inicial de estos cinco permisos.
+
+### Validación y pendientes
+
+PHP 8.5.11/PHPUnit 12.5.39, imagen existente --network none, SQLite :memory:
+explícita y caches/vistas en /tmp: **39 pruebas nuevas/258 aserciones**;
+combinadas con Usuarios/Configurar/Medidas/Insumos: **177 pruebas/1430 aserciones**,
+todas correctas. Invitados/cinco roles, permisos por acción/seeder/directos/ajenos,
+filtros/escape/búsqueda literal/orden/páginas80; XLSX real de 506 filas filtradas
+superando lote500, orden/columnas/texto seguro y PDF real; altas HTTP/JSON,
+campos/duplicados; cantidades y FLOAT, unidad inicial distinta de final,
+elegibilidad, ceros/negativos/no finitos, unidad cambiada/campos manipulados,
+IDs cruzados/obsoletos, huérfanos/duplicados, rollback producto/relación,
+históricos intactos y ausencia de editar producto/estado/eliminar.
+
+Harness externo render Laravel: **1 prueba/7 aserciones**. Chromium/Playwright con
+esas vistas y respuestas fetch simuladas: 1366/390 px, listado/estado/Copy,
+diálogos, errores422, cantidades/unidad derivada, éxito, doble envío, refresco sin
+navegar, siguiente componente, Escape/foco, fallo de consulta y formularios sin
+JS; vacío/duplicados. Capturas revisadas en /tmp/italian-catalog-visual.
+Vite, node --check, Pint y git diff --check pasan. No es E2E de sesión/CSRF/MySQL real.
+
+Pendiente: activar permisos en destino confirmado; validar collation/charset,
+FLOAT/locks/concurrencia MySQL, sesiones/CSRF y consumidores externos/dinámicos;
+resolver duplicados y definir retirada/versionado con el equipo. El alta rota de
+Insumos sigue deshabilitada y pendiente de Javi. No se migran Costo de Venta,
+Inventario, Remesas, Pedidos ni reglas de Ventas. No se modifican legacy, esquema,
+AGENTS.md, infraestructura, dependencias ni lockfiles. Entrega local sin desplegar.

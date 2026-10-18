@@ -9,6 +9,7 @@
         @foreach ([['Productos', 'Productos', 'coffe2.png', 'yellow'], ['Insumos', 'Insumos', 'unit.png', 'green'], ['Unidades', 'Gr,Kg,Lts', 'rule.png', 'white'], ['Costo de Venta', 'Costo de Venta', 'rule.png', 'white']] as [$label, $subtitle, $image, $tone])
             @php
                 $destination = match ($label) {
+                    'Productos' => ['products.catalog.index', 'products.catalog.view'],
                     'Unidades' => ['products.units.index', 'products.units.view'],
                     'Insumos' => ['products.ingredients.index', 'products.ingredients.view'],
                     default => null,
