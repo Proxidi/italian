@@ -1,3 +1,5 @@
+import './product-catalog.js';
+
 const dialogs = new Map(Array.from(document.querySelectorAll('[data-unit-dialog]'), dialog => [dialog.dataset.unitDialog, dialog]));
 document.querySelector('[data-new-unit]')?.addEventListener('click', () => {
     const dialog = dialogs.get('create');

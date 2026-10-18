@@ -5,6 +5,8 @@
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ConfigurationController;
 use App\Http\Controllers\IngredientsController;
+use App\Http\Controllers\ProductCatalogController;
+use App\Http\Controllers\ProductFormulasController;
 use App\Http\Controllers\ProductsController;
 use App\Http\Controllers\UsersReadController;
 use App\Http\Controllers\UsersWriteController;
@@ -41,6 +43,24 @@ Route::middleware('auth:web')->group(function () {
 
     Route::get('/Productos', [ProductsController::class, 'index'])
         ->middleware('can:products.view')->name('products.index');
+    Route::middleware('can:products.catalog.view')->scopeBindings()->group(function () {
+        Route::get('/Productos/list', [ProductCatalogController::class, 'index'])->name('products.catalog.index');
+        Route::get('/Productos/list/export', [ProductCatalogController::class, 'export'])->name('products.catalog.export');
+        Route::get('/Productos/list/nuevo', [ProductCatalogController::class, 'index'])
+            ->middleware('can:products.catalog.create')->name('products.catalog.create');
+        Route::post('/Productos/list', [ProductCatalogController::class, 'store'])
+            ->middleware('can:products.catalog.create')->name('products.catalog.store');
+        Route::middleware('can:products.formulas.view')->group(function () {
+            Route::get('/Productos/{product}/formulas', [ProductFormulasController::class, 'index'])
+                ->whereNumber('product')->name('products.formulas.index');
+            Route::get('/Productos/{product}/formulas/{formula}/editar', [ProductFormulasController::class, 'index'])
+                ->middleware('can:products.formulas.update')->whereNumber(['product', 'formula'])->name('products.formulas.edit');
+            Route::post('/Productos/{product}/formulas', [ProductFormulasController::class, 'store'])
+                ->middleware('can:products.formulas.create')->whereNumber('product')->name('products.formulas.store');
+            Route::put('/Productos/{product}/formulas/{formula}', [ProductFormulasController::class, 'update'])
+                ->middleware('can:products.formulas.update')->whereNumber(['product', 'formula'])->name('products.formulas.update');
+        });
+    });
     Route::middleware('can:products.units.view')->group(function () {
         Route::get('/Medidas', [ProductsController::class, 'units'])->name('products.units.index');
         Route::get('/Medidas/export', [ProductsController::class, 'export'])->name('products.units.export');
