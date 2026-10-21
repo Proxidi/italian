@@ -11,7 +11,7 @@
 @section('content')
     @php
         $isDirectory = $indexRoute === 'usuarios.index';
-        $columnCount = count($columns) + ($isDirectory ? 2 : 0);
+        $columnCount = count($columns) + ($isDirectory ? 1 : 0);
     @endphp
     <header class="ui-list-heading">
         <h1>{{ $title }} <small>Listado</small></h1>
@@ -63,7 +63,6 @@
                 @endforeach
                 @if ($isDirectory)
                     <th scope="col" class="ui-list__action-column" data-copy-exclude>Editar</th>
-                    <th scope="col" class="ui-list__action-column" data-copy-exclude>Eliminar</th>
                 @endif
             </x-slot:head>
             @forelse ($records as $record)
@@ -76,9 +75,6 @@
                             @else
                                 <x-ui.table-action disabled aria-disabled="true" aria-label="Editar usuario: sin permiso" />
                             @endif
-                        </td>
-                        <td data-copy-exclude>
-                            <x-ui.table-action color="red" icon="delete" disabled aria-disabled="true" aria-label="Eliminar usuario: no disponible" />
                         </td>
                     @endif
                 </tr>
