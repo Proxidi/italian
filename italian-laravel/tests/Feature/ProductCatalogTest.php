@@ -470,4 +470,24 @@ class ProductCatalogTest extends TestCase
         $this->actingAs($this->actor(), 'web')->postJson(route('products.catalog.store'), ['nombre' => 'Nuevo', 'clave' => 'N', 'familia_id' => 1])->assertServerError();
         $this->assertDatabaseCount('tbl_productos', 0);
     }
+
+    public function test_listing_fragment_preserves_family_search_sort_and_pagination_with_http_fallback(): void
+    {
+        for ($i = 0; $i < 82; $i++) {
+            $this->product(['Nombre' => sprintf('Café %03d', $i)]);
+        }
+        $this->product(['Nombre' => 'Otro', 'familia_id' => 2]);
+        $params = ['family' => 1, 'q' => 'Café', 'sort' => 'Nombre', 'direction' => 'desc', 'page' => 2];
+        $url = route('products.catalog.index', $params);
+        $this->actingAs($this->actor());
+        $full = $this->get($url)->assertOk()->assertSee('<html', false)->assertSeeInOrder(['Café 001', 'Café 000']);
+        $partial = $this->withHeader('X-Listing-Fragment', 'listing')->get($url)->assertOk()
+            ->assertHeader('X-Listing-Fragment', 'listing')->assertDontSee('<html', false)->assertDontSee('app-sidebar', false)
+            ->assertSee('data-async-list', false)->assertSee('family=1', false)->assertSee('sort=Nombre', false)->assertSee('q=Caf', false)
+            ->assertSee('method="GET"', false)->assertSeeInOrder(['Café 001', 'Café 000']);
+        $this->assertSame(2, substr_count($partial->getContent(), 'data-record-row'));
+        $this->assertStringContainsString($partial->getContent(), $full->getContent());
+        Role::findByName('root', 'web')->revokePermissionTo('products.catalog.view');
+        $this->get($url)->assertForbidden()->assertHeaderMissing('X-Listing-Fragment');
+    }
 }

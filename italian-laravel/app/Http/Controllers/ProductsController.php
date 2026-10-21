@@ -7,11 +7,13 @@ use App\Http\Requests\Products\SaveUnitRequest;
 use App\Http\Requests\Products\UnitsReadRequest;
 use App\Models\MeasurementUnit;
 use App\Support\AuthenticatedNavigation;
+use App\Support\ListingResponse;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
 use Maatwebsite\Excel\Facades\Excel;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -22,9 +24,9 @@ class ProductsController extends Controller
         return view('products.index', ['layout' => $navigation->forUser($request->user('web'))]);
     }
 
-    public function units(UnitsReadRequest $request, AuthenticatedNavigation $navigation): View
+    public function units(UnitsReadRequest $request, AuthenticatedNavigation $navigation): View|HttpResponse
     {
-        return view('products.units', [
+        return ListingResponse::render($request, 'products.units', [
             'layout' => $navigation->forUser($request->user('web')),
             'records' => $this->query($request)->paginate(50)->withQueryString(),
             'search' => $request->validated('q') ?? '',

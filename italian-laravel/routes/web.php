@@ -4,6 +4,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ConfigurationController;
+use App\Http\Controllers\CostOfSaleController;
 use App\Http\Controllers\IngredientsController;
 use App\Http\Controllers\ProductCatalogController;
 use App\Http\Controllers\ProductFormulasController;
@@ -78,6 +79,14 @@ Route::middleware('auth:web')->group(function () {
         Route::put('/Insumos/{ingredient}/conversiones/{conversion}', [IngredientsController::class, 'update'])
             ->middleware('can:products.ingredients.conversions.update')->whereNumber(['ingredient', 'conversion'])
             ->name('products.ingredients.conversions.update');
+    });
+
+    Route::middleware('can:products.cost-of-sale.view')->group(function () {
+        Route::get('/Insumos/getInsumosCostoVenta', [CostOfSaleController::class, 'index'])->name('products.cost-of-sale.index');
+        Route::get('/Insumos/costo-venta/{ingredient}/editar', [CostOfSaleController::class, 'index'])
+            ->middleware('can:products.cost-of-sale.update')->whereNumber('ingredient')->name('products.cost-of-sale.edit');
+        Route::put('/Insumos/costo-venta/{ingredient}', [CostOfSaleController::class, 'update'])
+            ->middleware('can:products.cost-of-sale.update')->whereNumber('ingredient')->name('products.cost-of-sale.update');
     });
 
     Route::middleware('can:configuration.upload-window.view')->group(function () {

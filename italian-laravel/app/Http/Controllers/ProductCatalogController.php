@@ -9,11 +9,13 @@ use App\Models\Product;
 use App\Models\ProductFamily;
 use App\Queries\ProductsListing;
 use App\Support\AuthenticatedNavigation;
+use App\Support\ListingResponse;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
@@ -21,9 +23,9 @@ use Symfony\Component\HttpFoundation\Response;
 
 class ProductCatalogController extends Controller
 {
-    public function index(ProductsReadRequest $request, AuthenticatedNavigation $navigation, ProductsListing $listing): View
+    public function index(ProductsReadRequest $request, AuthenticatedNavigation $navigation, ProductsListing $listing): View|HttpResponse
     {
-        return view('products.catalog', [
+        return ListingResponse::render($request, 'products.catalog', [
             'layout' => $navigation->forUser($request->user('web')),
             'records' => $listing->query($request->filters())->paginate(80)->withQueryString(),
             'columns' => ProductsListing::COLUMNS, 'filters' => $request->filters(),

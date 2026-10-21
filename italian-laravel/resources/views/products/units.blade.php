@@ -17,7 +17,8 @@
             <x-ui.feedback variant="notice" :title="session('unit-success')" data-unit-success />
         @endif
     @endif
-    <x-ui.listing label="Unidades">
+    @fragment('listing')
+    <x-ui.listing data-async-list label="Unidades">
         @if ($errors->any())<div class="ui-list__errors" role="alert"><p>No se guardaron los cambios:</p><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
         <div class="products-options"><span>Opciones:</span>@can('products.units.create')<button class="products-button products-button--green" type="button" data-new-unit><span aria-hidden="true">✚</span> Agregar Unidad</button>@endcan</div>
         <form action="{{ route('products.units.index') }}" method="GET" class="ui-list__filters">
@@ -40,6 +41,7 @@
         </x-ui.table>
         <x-ui.pagination :records="$records" />
     </x-ui.listing>
+    @endfragment
     @foreach (['create', 'update'] as $operation)
         @can('products.units.'.$operation)
             @php($isEdit = $operation === 'update')

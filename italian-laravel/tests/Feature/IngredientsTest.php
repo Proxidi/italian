@@ -247,7 +247,7 @@ class IngredientsTest extends TestCase
         Role::findByName('root', 'web')->givePermissionTo('products.view');
         $this->actingAs($this->actor(), 'web');
         $this->get(route('inicio'))->assertOk()->assertSee(route('products.ingredients.index'), false);
-        $this->get(route('products.index'))->assertOk()->assertSee('href="'.route('products.ingredients.index').'"', false)->assertSee('Pendiente de migración');
+        $this->get(route('products.index'))->assertOk()->assertSee('href="'.route('products.ingredients.index').'"', false)->assertDontSee('href="'.route('products.cost-of-sale.index').'"', false);
         Role::findByName('root', 'web')->revokePermissionTo('products.ingredients.view');
         $this->get(route('products.index'))->assertOk()->assertDontSee('href="'.route('products.ingredients.index').'"', false);
     }
@@ -519,5 +519,23 @@ class IngredientsTest extends TestCase
         $this->assertTrue($actor->fresh()->hasDirectPermission('products.ingredients.view'));
         $this->assertFalse(Role::findByName('admin', 'web')->hasPermissionTo('products.ingredients.view'));
         $this->actingAs($actor->fresh(), 'web')->get(route('products.ingredients.index'))->assertOk();
+    }
+
+    public function test_listing_fragment_combines_search_sort_and_page_and_retains_conversion_links(): void
+    {
+        for ($i = 0; $i < 302; $i++) {
+            $this->ingredient(sprintf('Café %03d', $i));
+        }
+        $this->ingredient('Té');
+        $this->actingAs($this->actor());
+        $url = route('products.ingredients.index', ['q' => 'Café', 'sort' => 'Nombre', 'direction' => 'desc', 'page' => 2]);
+        $full = $this->get($url)->assertOk()->assertSee('<html', false);
+        $partial = $this->withHeader('X-Listing-Fragment', 'listing')->get($url)->assertOk()
+            ->assertHeader('X-Listing-Fragment', 'listing')->assertDontSee('<html', false)->assertSeeInOrder(['Café 001', 'Café 000'])
+            ->assertSee('data-open-conversions', false)->assertSee('q=Caf', false)->assertSee('direction=desc', false);
+        $this->assertSame(2, substr_count($partial->getContent(), 'data-record-row'));
+        $this->assertStringContainsString($partial->getContent(), $full->getContent());
+        Role::findByName('root', 'web')->revokePermissionTo('products.ingredients.view');
+        $this->get($url)->assertForbidden();
     }
 }
