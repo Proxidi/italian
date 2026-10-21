@@ -21,7 +21,8 @@
     @if(session('message') && !session('user-created') && !$errors->any())
         <x-ui.feedback :title="session('message')" />
     @endif
-    <x-ui.listing :label="$title">
+    @fragment('listing')
+    <x-ui.listing data-async-list :label="$title">
         @if ($errors->any())
             <div class="ui-list__errors" role="alert">
                 <p>Revisa los datos:</p><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
@@ -87,6 +88,7 @@
         </x-ui.table>
         <x-ui.pagination :records="$records" />
     </x-ui.listing>
+    @endfragment
     @if($isDirectory)
         @can('create', \App\Models\User::class)
             @include('usuarios.partials.create')

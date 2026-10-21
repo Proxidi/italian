@@ -8,6 +8,7 @@ use App\Http\Requests\Users\AccessLogRequest;
 use App\Http\Requests\Users\DirectoryRequest;
 use App\Models\User;
 use App\Support\AuthenticatedNavigation;
+use App\Support\ListingResponse;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Query\Builder;
@@ -78,10 +79,10 @@ class UsersReadController extends Controller
     public function directory(
         DirectoryRequest $request,
         AuthenticatedNavigation $navigation,
-    ): View {
+    ): Response {
         $filters = $request->filters();
 
-        return view('usuarios.table', [
+        return ListingResponse::render($request, 'usuarios.table', [
             'layout' => $navigation->forUser($request->user('web')),
             'title' => 'Usuarios',
             'description' => 'Directorio de consulta',
@@ -101,10 +102,10 @@ class UsersReadController extends Controller
     public function accessLog(
         AccessLogRequest $request,
         AuthenticatedNavigation $navigation,
-    ): View {
+    ): Response {
         $filters = $request->filters();
 
-        return view('usuarios.table', [
+        return ListingResponse::render($request, 'usuarios.table', [
             'layout' => $navigation->forUser($request->user('web')),
             'title' => 'Bitácora de Accesos',
             'description' => 'Accesos registrados en la fecha seleccionada',
