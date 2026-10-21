@@ -1,3 +1,5 @@
+import { startActionLoading } from './action-loading.js';
+
 function currentFilters(form) {
     const data = new FormData(form);
     if (document.querySelector('[data-async-list]')) {
@@ -159,18 +161,17 @@ if (status) {
         event.preventDefault();
         if (busy) return;
         busy = true;
-        link.setAttribute('aria-busy', 'true');
-        report('Cargando fórmula…');
+        const stopLoading = startActionLoading(link, 'Cargando fórmula…');
+        report('');
         try {
             const panel = await getPanel(link.href);
             document.body.append(panel);
             mountPanel(panel, link);
-            report('');
         } catch {
             report('No se pudo consultar la fórmula. Revisa la conexión, la sesión y tus permisos.');
         } finally {
             busy = false;
-            link.removeAttribute('aria-busy');
+            stopLoading();
         }
     });
     const create = document.querySelector('[data-product-create]');
