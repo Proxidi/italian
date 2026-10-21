@@ -3,8 +3,14 @@
     <header class="ui-list-heading"><h1>Insumos Costo-Venta <small>Listado</small></h1>
         @can('products.view')<a href="{{ route('products.index') }}">Volver al Panel de Productos ➜</a>@else<a href="{{ route('inicio') }}">Volver al Panel de Inicio ➜</a>@endcan
     </header>
-    @if(session('cost-success'))<x-ui.feedback variant="notice" :title="session('cost-success')" />@endif
+    @if(session('cost-success'))
+        <x-ui.feedback variant="dialog" position="corner" :title="session('cost-success')" :duration="1000" id="cost-success" />
+        <noscript><p class="ui-feedback ui-feedback--notice" role="status">{{ session('cost-success') }}</p></noscript>
+    @endif
     <p data-cost-status class="ui-list__copy-status" role="status" aria-live="polite"></p>
+    <template data-cost-success-template>
+        <x-ui.feedback variant="dialog" position="corner" title="" :auto-open="false" :duration="1000" id="cost-async-success" />
+    </template>
     @fragment('listing')
     <x-ui.listing data-async-list label="Costo de Venta">
         @php($remittances = ($filters['mode'] ?? 'orders') === 'remittances')
