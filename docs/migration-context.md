@@ -1631,3 +1631,167 @@ resolver duplicados y definir retirada/versionado con el equipo. El alta rota de
 Insumos sigue deshabilitada y pendiente de Javi. No se migran Costo de Venta,
 Inventario, Remesas, Pedidos ni reglas de Ventas. No se modifican legacy, esquema,
 AGENTS.md, infraestructura, dependencias ni lockfiles. Entrega local sin desplegar.
+
+## Productos, etapa 4: Costo de Venta y listados dinámicos (2026-10-20)
+
+Esta etapa parte de `aadd78ce` (catálogo y fórmulas), recuperado desde la rama
+`work`. Sustituye el pendiente de Costo de Venta de la etapa 3. No modifica
+legacy, esquema, infraestructura, dependencias ni el alta pendiente de Insumos.
+
+### Recorrido y regla comprobados
+
+Panel Productos → `Insumos/getInsumosCostoVenta` →
+`administrador/productos/insumos/costo_venta.php`. Lee `Mdl_productos` y
+`Mdl_plazas::getPlazas()` (todas las plazas, sin filtro de actividad).
+La interfaz tiene dos tablas independientes, búsqueda/orden DataTables en cliente,
+**sin paginación ni botones de exportación** (`paging:false`, `buttons:[]`).
+Los radios cambian la tabla visible sin navegación; fecha/plaza consultan
+`Insumos/getInsumosCompras` por AJAX. No es `Ventas/tablaCostoVenta`.
+
+- **Pedido**: `tbl_insumos` con `Analisis_CV=1 AND (pedido=1 OR
+  Pedido_Pasteleria=1)`. Columnas ID, Nombre, Costo Venta, Editar. Muestra el
+  valor **almacenado** `Costo_Venta` (DOUBLE), global por insumo, con `$` y dos
+  decimales. No deriva el costo de productos, recetas, cantidades o unidades.
+- **Remesas**: insumos con `Analisis_CV=1 AND pedido=0 AND Pedido_Pasteleria=0`,
+  cruzados con todas las plazas o la plaza seleccionada. Columnas ID, Plaza,
+  Nombre, Costo Venta; `$` y tres decimales. La fecha seleccionada se normaliza a
+  lunes/domingo inclusivos. Agrupa `tbl_gastos` mediante
+  `tbl_gastos.insumo_gasto_id → tbl_insumos_gastos.id → insumo_id` y plaza:
+  `costo = SUM(Importe) / SUM(Cantidad)`. Es un promedio ponderado, no promedio
+  de precios individuales. Ejemplo: 100 por 2 + 90 por 3 = 190/5 = **$38.000**.
+  Sin compras (ambas sumas nulas/cero), muestra cero. El resultado no se guarda
+  en `tbl_insumos.Costo_Venta` ni en otra tabla.
+- `getPrecioPromedioInsumo` **no filtra Estado** de gastos, ni convierte unidades,
+  ni consulta `tbl_productos`/`tbl_productos_insumos`/conversiones. Se preserva
+  esa selección. La cifra representa importe por unidad de la `Cantidad` cruda
+  del gasto; la pantalla no identifica una unidad física ni permite asegurar
+  que diferentes conceptos del mismo insumo usen unidades compatibles. No se
+  inventa una conversión o un costo por receta. Decidir cambios de esa regla
+  requiere revisión del equipo y datos reales.
+
+### Escritura conectada y efectos fuera del módulo
+
+`configurarInsumo` llama `getInsumoCostoVenta` (joins categoría y las tres unidades)
+y el modal envía `Insumos/actualizarCostoVenta`: valida `is_numeric` y ejecuta
+**solo UPDATE tbl_insumos SET Costo_Venta=… WHERE id=…**. Cierra modal y actualiza
+la tabla por AJAX, **sin animación de éxito**. No hay alta, eliminación ni edición
+de costos calculados de Remesas. Los helpers `fncInsumosCompras*` son cálculo
+interno, no operaciones adicionales a migrar.
+
+Se inspeccionó puntualmente `Ventas::fnCostoVenta`: lee ese costo almacenado para
+valorar inventarios inicial/final y pedidos (con su conversión CVG); luego calcula
+`(valor_inicial + compras - valor_final) / ingresos * 100`. El costo guardado es
+actual, sin vigencia/versionado: una consulta histórica posterior puede usar el
+nuevo valor. Cambiarlo no reescribe gastos, inventarios, pedidos ni históricos.
+Ventas calcula de nuevo los costos de Remesas y contiene un fallback experimental
+comentado como no validado para semanas sin compras. **Ese análisis, sus fórmulas,
+conversiones y fallback no pertenecen a esta pantalla ni se migran ahora.**
+
+### Implementación, autorización y diferencias intencionales
+
+- `CostOfSale` encapsula tablas, clasificación, semana y una agregación SQL con
+  LEFT JOIN; no hace dos consultas por insumo/plaza ni carga gastos en PHP.
+  Conserva las filas sin compras y los listados completos sin paginación.
+- `CostOfSaleController`, Form Requests y Blade reutilizan componentes de tablas,
+  orden, diálogos y feedback existentes. Mantiene columnas y formatos, radios,
+  fecha final de solo lectura, plaza, búsqueda y modal de edición. No se añadieron
+  exportaciones, fórmulas de producto, eliminaciones ni dependencias externas.
+- Lectura: `products.cost-of-sale.view`; edición: además
+  `products.cost-of-sale.update`. `CostOfSalePermissionsSeeder` otorga inicialmente
+  ambos **solo a root/Gerente**, guard web. Dump: menús 282–285 y permisos
+  `(466–469, rol 3, Leer 1)`; se verificó `Backend_lib::control()` y su lookup LIKE,
+  sin copiar URLs como permisos. Panel/sidebar se activan según esas capacidades.
+  No hay concesiones nuevas a Dueño/Manager/SubManager/Socio ni bypass de Gate.
+- Rutas `products.cost-of-sale.index` (conserva URL legacy de entrada),
+  `.edit` y `.update` (GET/PUT propios del recurso). Actualización transaccional
+  de una fila con lock y elegibilidad recomprobada. Solo escribe `Costo_Venta`;
+  no acepta modificar flags, nombre, unidades o costos de insumos Remesas mediante
+  una URL manipulada. Un insumo que dejó de ser elegible o perdió catálogos no
+  puede guardarse desde un modal obsoleto. CSRF/autorización siguen en servidor.
+- Costo requerido, numérico y finito representable en DOUBLE. **Se admiten cero y
+  negativos finitos como `is_numeric` legacy**: no se inventa una prohibición de
+  negocio ni se alteran costos ya guardados. Si el equipo quiere prohibirlos,
+  debe definir esa regla. HTML number/step=any y el servidor validan coherentemente.
+- Corrige el cálculo de semanas cerca de Año Nuevo: legacy combina año calendario
+  `Y` con semana ISO `W`, pudiendo desplazar el rango un año. Laravel usa la semana
+  real lunes–domingo (2021-01-01 → 2020-12-28 / 2021-01-03), independiente del locale.
+- Corrige división por cero: si Cantidad total es cero e Importe no cero, muestra
+  **«No calculable (cantidad total cero)»**, sin excepción ni costo ficticio.
+  No cambia esos gastos. Si ambas sumas son cero, conserva el cero legacy.
+- Unifica presentación monetaria: carga inicial legacy usa number_format con
+  separadores de miles, pero tras AJAX usa toFixed sin separadores. Laravel
+  conserva formato monetario estable y busca también sobre su representación
+  visible. Ordena por valor numérico, no por el texto con `$`.
+- La semana por defecto usa `config('app.timezone')`, actualmente UTC. No se
+  cambió la zona horaria global; confirmar la del negocio/servidor legacy antes
+  de afirmar equivalencia de «semana actual» cerca del cambio de día.
+
+**Activación pendiente en el equipo:** confirmar primero conexión/destino y luego
+`sail artisan db:seed --class=CostOfSalePermissionsSeeder`. No ejecutar
+DatabaseSeeder, migraciones ni importar el dump para esta etapa. Aquí el seeder
+solo se ejecutó en fixtures aislados; no se modificó ninguna BD del responsable.
+
+### Búsqueda, filtros y navegación sin recarga
+
+Se verificaron `tbl_datos` (Productos, 80), `tbl_unidades` (Medidas, 50),
+`tbl_configuracion_insumos` (Insumos, 300) y sus inicializaciones DataTables:
+búsqueda/orden/páginas son en cliente sin navegación. El filtro de familia de
+Productos legacy es un formulario HTTP; ahora también puede actualizarse por fetch
+como mejora de interacción autorizada, conservando la misma consulta.
+
+- Productos, Insumos, Medidas y Costo de Venta optan a `async-list.js` mediante
+  `data-async-list`. Las mismas rutas/Form Requests/queries devuelven HTML completo
+  o un fragmento Blade `listing` con `X-Listing-Fragment: listing`. El frontend
+  reemplaza solo el listado (controles/tabla/resumen), sin reinstanciar layout ni
+  diálogos externos. `ListingResponse` comparte la respuesta, `Vary` y no-store.
+- Búsqueda con debounce 300 ms, AbortController y descarte de respuestas obsoletas;
+  conserva foco/cursor. Formularios GET, orden y páginas combinan query parameters;
+  cambiar búsqueda/filtros reinicia página. history.replaceState para escritura
+  de búsqueda, pushState para acciones explícitas y popstate para atrás/adelante.
+  Recargar/compartir URL conserva el estado aplicado. Errores no reemplazan la
+  tabla por login/error, no reenvían escrituras ni conceden permisos.
+- Listeners de acciones de fila de Productos/Insumos/Medidas y Copy en `ui.js`
+  usan delegación para funcionar tras reemplazar filas sin duplicar listeners.
+  `product-catalog.js` toma filtros actuales al guardar desde el listado, evitando
+  parámetros antiguos en diálogos abiertos después de una búsqueda.
+- La fórmula asociada al producto (`tbl_modal_formula`, tabla modal sin DataTable)
+  no tiene búsqueda/orden/paginación propios en legacy. Mantiene el fetch ya
+  implementado para consultar/guardar y refrescar el panel, sin controles nuevos.
+  No se añade el recorrido independiente antiguo Formulas/list de otra etapa.
+- Costo de Venta conserva **sin paginación**; cambia modo, fecha/plaza, búsqueda y
+  orden por fetch. Abrir/guardar el costo usa fetch, conserva valores/errores422,
+  bloquea doble envío y refresca el listado; el éxito cierra modal como legacy,
+  sin añadir una animación inexistente.
+- HTTP tradicional permanece como respaldo sin JS, al abrir directamente rutas
+  de formularios, descargar XLSX/PDF, cambiar de módulo y en las escrituras ya
+  existentes de Medidas/alta de Productos (fuera de la mejora de listados). No se
+  convirtió Usuarios/Configurar a AJAX ni se cambiaron sus consultas.
+
+### Validación de esta entrega
+
+PHP 8.5.11/PHPUnit 12.5.39 en contenedor sin red, SQLite :memory: explícita,
+sin migraciones/importaciones/conexiones a MySQL. CostOfSaleTest cubre clasificación,
+costos almacenados, ponderación/múltiples conceptos/plazas/fechas/Estado,
+filas vacías/cantidad cero, semana ISO, formatos monetarios/búsqueda/escape,
+filtros combinados/orden, ausencia de paginación/exportaciones, permisos de cinco
+roles/invitados, edición HTTP/JSON/CSRF en formularios, datos intactos, valores
+inválidos y elegibilidad obsoleta. Pruebas nuevas de fragmentos en Productos,
+Insumos y Medidas comparan HTML completo/parcial, filtros+orden+página y permisos.
+Regresión con Usuarios/Configurar por el cambio de Copy compartido:
+**212 pruebas / 1603 aserciones correctas**.
+
+Chromium real (Playwright externo, sin dependencia nueva del proyecto), vistas y
+rutas Laravel reales con fixtures SQLite exclusivos en /tmp y actor de prueba:
+1366/390 px; búsqueda/familia/plaza/fechas/orden/páginas/atrás/adelante sin recarga,
+acciones de filas después del reemplazo (fórmula/conversión/unidades), Copy,
+edición de costo y consulta actualizada. Sin JS: búsqueda y edición/guardado/
+redirección HTTP correctas. Además: filtro combinado antes del debounce,
+respuesta atrasada, 403 conserva tabla, búsqueda por moneda y 422 conserva editor/
+valor. Sin errores JS en el recorrido principal; capturas escritorio/móvil
+revisadas en /tmp/italian-cost-visual. Este harness autentica un actor sintético,
+no certifica login/sesión/CSRF real ni concurrencia con CodeIgniter.
+
+Pendiente con datos reales: collation/redondeos DOUBLE/FLOAT y FORMAT de MySQL,
+planes/costo de agregación con volumen real, zona horaria efectiva, coherencia de
+unidades en gastos y efecto en análisis históricos de Ventas. No se ejecutaron
+operaciones en BD compartida ni se migraron Inventario/Remesas/Pedidos/Ventas.

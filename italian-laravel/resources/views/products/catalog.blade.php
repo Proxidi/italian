@@ -5,8 +5,10 @@
         @can('products.view')<a href="{{ route('products.index') }}">Volver al Panel de Productos ➜</a>@else<a href="{{ route('inicio') }}">Volver al Panel de Inicio ➜</a>@endcan
     </header>
     @include('products.partials.catalog-feedback')
-    <x-ui.listing label="Productos">
+    @fragment('listing')
+    <x-ui.listing data-async-list label="Productos">
         <form action="{{ route('products.catalog.index') }}" method="GET" class="products-options catalog-options">
+            @foreach (['q', 'sort', 'direction'] as $key)@if(isset($filters[$key]))<input type="hidden" name="{{ $key }}" value="{{ $filters[$key] }}">@endif @endforeach
             <label for="product-family">Familias:</label>
             <select class="products-input" id="product-family" name="family"><option value="">Todas las familias</option>
                 @foreach ($families as $family)<option value="{{ $family->id }}" @selected((string)($filters['family'] ?? '') === (string)$family->id)>{{ $family->Nombre }}</option>@endforeach
@@ -38,6 +40,7 @@
         </x-ui.table>
         <x-ui.pagination :records="$records" />
     </x-ui.listing>
+    @endfragment
     @can('products.catalog.create')
         <dialog class="products-dialog catalog-dialog" data-product-create @if(request()->routeIs('products.catalog.create') || $errors->any()) data-reopen @endif aria-labelledby="product-create-title">
             <header><h2 id="product-create-title">Agregar Producto</h2><button type="button" data-close-product aria-label="Cerrar">×</button></header>

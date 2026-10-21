@@ -12,6 +12,7 @@
                     'Productos' => ['products.catalog.index', 'products.catalog.view'],
                     'Unidades' => ['products.units.index', 'products.units.view'],
                     'Insumos' => ['products.ingredients.index', 'products.ingredients.view'],
+                    'Costo de Venta' => ['products.cost-of-sale.index', 'products.cost-of-sale.view'],
                     default => null,
                 };
                 $available = $destination && auth('web')->user()->can($destination[1]);

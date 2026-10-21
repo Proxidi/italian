@@ -1,6 +1,7 @@
 // Shared list interactions: scoped to the owning listing, never its write forms.
-document.querySelectorAll('[data-copy-page]').forEach((button) => {
-    button.addEventListener('click', async () => {
+document.addEventListener('click', async event => {
+        const button = event.target.closest('[data-copy-page]');
+        if (!button) return;
         const listing = button.closest('.ui-list');
         const table = listing?.querySelector('[data-read-table]');
         const status = listing?.querySelector('[data-copy-status]');
@@ -19,7 +20,6 @@ document.querySelectorAll('[data-copy-page]').forEach((button) => {
         } catch {
             status.textContent = 'No se pudo copiar. Puedes descargar el archivo Excel.';
         }
-    });
 });
 
 document.querySelectorAll('[data-dismiss-feedback]').forEach(button => {

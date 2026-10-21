@@ -1,3 +1,14 @@
+function currentFilters(form) {
+    const data = new FormData(form);
+    if (document.querySelector('[data-async-list]')) {
+        for (const key of ['q', 'family', 'sort', 'direction', 'page']) {
+            data.delete(key);
+            const value = new URL(location.href).searchParams.get(key);
+            if (value !== null) data.set(key, value);
+        }
+    }
+    return data;
+}
 // Progressive enhancement of the existing authorized HTML routes.
 const status = document.querySelector('[data-catalog-status]');
 if (status) {
@@ -39,7 +50,7 @@ if (status) {
             submit.disabled = true;
             try {
                 const response = await fetch(form.action, {
-                    method: 'POST', body: new FormData(form), credentials: 'same-origin', headers: { Accept: 'application/json' },
+                    method: 'POST', body: currentFilters(form), credentials: 'same-origin', headers: { Accept: 'application/json' },
                 });
                 if (!response.ok) {
                     if (response.status === 422) {
@@ -141,7 +152,9 @@ if (status) {
     }
     const initial = document.querySelector('[data-formula-panel]');
     if (initial) mountPanel(initial);
-    document.querySelectorAll('[data-open-formulas]').forEach(link => link.addEventListener('click', async event => {
+    document.addEventListener('click', async event => {
+        const link = event.target.closest('[data-open-formulas]');
+        if (!link) return;
         if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
         event.preventDefault();
         if (busy) return;
@@ -159,10 +172,11 @@ if (status) {
             busy = false;
             link.removeAttribute('aria-busy');
         }
-    }));
+    });
     const create = document.querySelector('[data-product-create]');
     if (create) {
-        document.querySelector('[data-open-product]')?.addEventListener('click', event => {
+        document.addEventListener('click', event => {
+            if (!event.target.closest('[data-open-product]')) return;
             if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
             event.preventDefault();
             create.showModal();

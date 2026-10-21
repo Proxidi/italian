@@ -18,7 +18,8 @@
         <x-ui.feedback variant="dialog" position="corner" :title="session('ingredient-success')" :duration="1500" id="ingredient-success" />
         <noscript><p class="ui-feedback ui-feedback--notice" role="status">{{ session('ingredient-success') }}</p></noscript>
     @endif
-    <x-ui.listing label="Insumos">
+    @fragment('listing')
+    <x-ui.listing data-async-list label="Insumos">
         @if ($errors->any() && !$ingredient)<div class="ui-list__errors" role="alert">No se guardaron los cambios.</div>@endif
         <div class="products-options ingredients-options">
             <button class="products-button products-button--blue" type="button" disabled aria-describedby="ingredient-create-pending"><span aria-hidden="true">✚</span> Agregar Insumo</button>
@@ -47,6 +48,7 @@
         </x-ui.table>
         <x-ui.pagination :records="$records" />
     </x-ui.listing>
+    @endfragment
     @if ($ingredient)
         @php
             $oldConversion = $conversions->first(fn ($row) => (string)$row->id === (is_scalar(old('_conversion_id')) ? (string)old('_conversion_id') : ''));

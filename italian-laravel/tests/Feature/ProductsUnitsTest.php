@@ -125,7 +125,7 @@ class ProductsUnitsTest extends TestCase
         $this->actingAs($this->actor(), 'web');
         $this->get(route('inicio'))->assertOk()->assertSee(route('products.index'), false)->assertSee(route('products.units.index'), false);
         $this->get(route('products.index'))->assertOk()->assertSee('Panel de Productos')->assertSee('Gr,Kg,Lts')
-            ->assertSee(route('products.units.index'), false)->assertSee('Pendiente de migración')->assertDontSee('href="http://localhost/Insumos', false);
+            ->assertSee(route('products.units.index'), false)->assertDontSee('href="'.route('products.cost-of-sale.index').'"', false)->assertDontSee('href="http://localhost/Insumos', false);
         $this->get(route('products.units.index'))->assertOk()->assertSeeInOrder(['Gramos', 'Mililitros', 'No Asignado'])
             ->assertSee('Agregar Unidad')->assertSee('Editar Unidad')->assertSee('name="_token"', false)->assertDontSee('Eliminar');
     }
@@ -293,5 +293,22 @@ class ProductsUnitsTest extends TestCase
         $this->assertFalse(Role::findByName('admin', 'web')->hasPermissionTo('products.view'));
         $this->assertTrue($actor->fresh()->hasDirectPermission('products.units.view'));
         $this->actingAs($actor->fresh(), 'web')->get(route('products.units.index'))->assertOk();
+    }
+
+    public function test_units_fragment_preserves_search_sort_and_pagination_and_http_form(): void
+    {
+        for ($i = 0; $i < 52; $i++) {
+            MeasurementUnit::create(['Nombre' => sprintf('Unidad %03d', $i)]);
+        }
+        $this->actingAs($this->actor());
+        $url = route('products.units.index', ['q' => 'Unidad', 'direction' => 'desc', 'page' => 2]);
+        $full = $this->get($url)->assertOk()->assertSee('<html', false);
+        $partial = $this->withHeader('X-Listing-Fragment', 'listing')->get($url)->assertOk()
+            ->assertHeader('X-Listing-Fragment', 'listing')->assertDontSee('<html', false)->assertSeeInOrder(['Unidad 001', 'Unidad 000'])
+            ->assertSee('data-edit-unit', false)->assertSee('q=Unidad', false)->assertSee('direction=desc', false)->assertSee('method="GET"', false);
+        $this->assertSame(2, substr_count($partial->getContent(), 'data-record-row'));
+        $this->assertStringContainsString($partial->getContent(), $full->getContent());
+        Role::findByName('root', 'web')->revokePermissionTo('products.units.view');
+        $this->get($url)->assertForbidden();
     }
 }

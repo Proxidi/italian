@@ -1,19 +1,24 @@
+import './async-list.js';
+import './cost-of-sale.js';
 import './product-catalog.js';
 
 const dialogs = new Map(Array.from(document.querySelectorAll('[data-unit-dialog]'), dialog => [dialog.dataset.unitDialog, dialog]));
-document.querySelector('[data-new-unit]')?.addEventListener('click', () => {
+document.addEventListener('click', event => {
+    if (!event.target.closest('[data-new-unit]')) return;
     const dialog = dialogs.get('create');
     dialog.querySelector('form').reset();
     dialog.showModal();
 });
-document.querySelectorAll('[data-edit-unit]').forEach(button => button.addEventListener('click', () => {
+document.addEventListener('click', event => {
+    const button = event.target.closest('[data-edit-unit]');
+    if (!button) return;
     const dialog = dialogs.get('update');
     const form = dialog.querySelector('form');
     form.action = button.dataset.action;
     form.elements.nombre.value = button.dataset.name;
     form.elements._unit_id.value = button.dataset.id;
     dialog.showModal();
-}));
+});
 document.querySelectorAll('[data-close-unit]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
 document.querySelector('[data-unit-dialog][data-reopen]')?.showModal();
 document.querySelectorAll('[data-unit-form]').forEach(form => form.addEventListener('submit', event => {
@@ -141,7 +146,9 @@ function initializeConversions(dialog, opener = null) {
 const initialConversions = document.querySelector('[data-ingredient-conversions]');
 if (initialConversions) initializeConversions(initialConversions);
 
-document.querySelectorAll('[data-open-conversions]').forEach(link => link.addEventListener('click', async event => {
+document.addEventListener('click', async event => {
+    const link = event.target.closest('[data-open-conversions]');
+    if (!link) return;
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     if (loadingConversions) return;
@@ -167,4 +174,4 @@ document.querySelectorAll('[data-open-conversions]').forEach(link => link.addEve
         loadingConversions = false;
         link.removeAttribute('aria-busy');
     }
-}));
+});

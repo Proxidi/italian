@@ -43,3 +43,8 @@ a.products-card:hover .products-card__footer { background: #f8f8f8; }
 @media (max-width: 1100px) { .products-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; } .products-card__heading { padding: 15px; gap: 10px; } .products-card h2 { font-size: 23px; } }
 @media (max-width: 600px) { .products-cards { grid-template-columns: 1fr; } .products-field { grid-template-columns: 1fr; } .products-field label { text-align: left; } .products-field-error { grid-column: 1; } }
 @media (max-width: 600px) { .ingredients-field-help { grid-column: 1; } }
+.cost-filters fieldset { border: 0; padding: 0; }
+.cost-filters legend { float: left; margin-right: 20px; }
+.cost-search { justify-content: flex-end; }
+.cost-filters [hidden] { display: none; }
+@media (max-width: 600px) { .cost-filters .products-input { max-width: 100%; } }
