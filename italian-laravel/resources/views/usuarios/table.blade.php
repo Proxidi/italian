@@ -11,7 +11,7 @@
 @section('content')
     @php
         $isDirectory = $indexRoute === 'usuarios.index';
-        $columnCount = count($columns) + ($isDirectory ? 2 : 0);
+        $columnCount = count($columns) + ($isDirectory ? 1 : 0);
     @endphp
     <header class="ui-list-heading">
         <h1>{{ $title }} <small>Listado</small></h1>
@@ -21,7 +21,8 @@
     @if(session('message') && !session('user-created') && !$errors->any())
         <x-ui.feedback :title="session('message')" />
     @endif
-    <x-ui.listing :label="$title">
+    @fragment('listing')
+    <x-ui.listing data-async-list :label="$title">
         @if ($errors->any())
             <div class="ui-list__errors" role="alert">
                 <p>Revisa los datos:</p><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
@@ -62,7 +63,6 @@
                 @endforeach
                 @if ($isDirectory)
                     <th scope="col" class="ui-list__action-column" data-copy-exclude>Editar</th>
-                    <th scope="col" class="ui-list__action-column" data-copy-exclude>Eliminar</th>
                 @endif
             </x-slot:head>
             @forelse ($records as $record)
@@ -76,9 +76,6 @@
                                 <x-ui.table-action disabled aria-disabled="true" aria-label="Editar usuario: sin permiso" />
                             @endif
                         </td>
-                        <td data-copy-exclude>
-                            <x-ui.table-action color="red" icon="delete" disabled aria-disabled="true" aria-label="Eliminar usuario: no disponible" />
-                        </td>
                     @endif
                 </tr>
             @empty
@@ -87,6 +84,7 @@
         </x-ui.table>
         <x-ui.pagination :records="$records" />
     </x-ui.listing>
+    @endfragment
     @if($isDirectory)
         @can('create', \App\Models\User::class)
             @include('usuarios.partials.create')
