@@ -37,9 +37,18 @@ if (status) {
                 }
                 if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Unconfirmed write');
                 const data = await response.json();
-                status.textContent = data.message;
-                dialog.close();
-                document.dispatchEvent(new CustomEvent('listing:refresh'));
+                const success = document.querySelector('[data-cost-success-template]').content.firstElementChild.cloneNode(true);
+                success.querySelector('h2').textContent = data.message;
+                document.body.append(success);
+                success.showModal();
+                const finish = () => {
+                    window.clearTimeout(timer);
+                    success.remove();
+                    dialog.close();
+                    document.dispatchEvent(new CustomEvent('listing:refresh'));
+                };
+                const timer = window.setTimeout(() => success.close(), 1000);
+                success.addEventListener('close', finish, { once: true });
             } catch {
                 errors.textContent = 'No se pudo confirmar el guardado. Consulta los datos antes de reintentar.';
                 errors.hidden = false;
