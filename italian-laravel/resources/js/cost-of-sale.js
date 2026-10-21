@@ -1,3 +1,5 @@
+import { startActionLoading } from './action-loading.js';
+
 const status = document.querySelector('[data-cost-status]');
 if (status) {
     let busy = false;
@@ -57,7 +59,8 @@ if (status) {
         event.preventDefault();
         if (busy) return;
         busy = true;
-        status.textContent = 'Cargando costo…';
+        const stopLoading = startActionLoading(link, 'Cargando costo…');
+        status.textContent = '';
         try {
             const response = await fetch(link.href, { credentials: 'same-origin', headers: { Accept: 'text/html' } });
             if (!response.ok || response.redirected) throw new Error('Unavailable cost');
@@ -67,6 +70,9 @@ if (status) {
             mount(document.importNode(dialog, true), link);
             status.textContent = '';
         } catch { status.textContent = 'No se pudo consultar el costo. Comprueba la conexión, tu sesión y permisos.'; }
-        finally { busy = false; }
+        finally {
+            busy = false;
+            stopLoading();
+        }
     });
 }

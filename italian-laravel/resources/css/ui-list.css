@@ -262,6 +262,31 @@
     fill: currentColor;
 }
 
+.ui-list__action.is-loading {
+    pointer-events: none;
+    cursor: wait;
+    opacity: 0.75;
+}
+
+.ui-list__action.is-loading svg {
+    display: none;
+}
+
+.ui-list__action.is-loading::after {
+    box-sizing: border-box;
+    width: 15px;
+    height: 15px;
+    border: 2px solid rgb(255 255 255 / 45%);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    content: '';
+    animation: ui-action-loading 0.7s linear infinite;
+}
+
+@keyframes ui-action-loading {
+    to { transform: rotate(360deg); }
+}
+
 .ui-list__action--orange {
     border-color: #e08e0b;
     background: #f39c12;
@@ -275,6 +300,10 @@
 .ui-list__action:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ui-list__action.is-loading::after { animation: none; }
 }
 
 .ui-list__pagination {

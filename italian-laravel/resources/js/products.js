@@ -1,6 +1,7 @@
 import './async-list.js';
 import './cost-of-sale.js';
 import './product-catalog.js';
+import { startActionLoading } from './action-loading.js';
 
 const dialogs = new Map(Array.from(document.querySelectorAll('[data-unit-dialog]'), dialog => [dialog.dataset.unitDialog, dialog]));
 document.addEventListener('click', event => {
@@ -153,9 +154,9 @@ document.addEventListener('click', async event => {
     event.preventDefault();
     if (loadingConversions) return;
     loadingConversions = true;
-    link.setAttribute('aria-busy', 'true');
-    loadStatus.hidden = false;
-    loadStatus.textContent = 'Cargando operaciones…';
+    const stopLoading = startActionLoading(link, 'Cargando operaciones…');
+    loadStatus.hidden = true;
+    loadStatus.textContent = '';
     try {
         const response = await fetch(link.href, { credentials: 'same-origin', headers: { Accept: 'text/html' } });
         if (!response.ok) throw new Error('Cannot load');
@@ -172,6 +173,6 @@ document.addEventListener('click', async event => {
         loadStatus.textContent = 'No se pudieron cargar las operaciones. Revisa la conexión o recarga la página para comprobar tu sesión.';
     } finally {
         loadingConversions = false;
-        link.removeAttribute('aria-busy');
+        stopLoading();
     }
 });
