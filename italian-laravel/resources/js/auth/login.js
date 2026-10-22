@@ -2,6 +2,32 @@ const form = document.querySelector('[data-login-form]');
 
 if (form) {
     const inputs = [...form.querySelectorAll('input[required]')];
+    const submit = form.querySelector('[type="submit"]');
+    const label = form.querySelector('[data-submit-label]');
+    const spinner = form.querySelector('.login__spinner');
+    const status = form.querySelector('[data-login-status]');
+    const toggle = form.querySelector('[data-password-toggle]');
+    const password = form.querySelector('#password');
+    let submitting = false;
+
+    toggle.hidden = false;
+    toggle.addEventListener('click', () => {
+        const visible = password.type === 'password';
+        password.type = visible ? 'text' : 'password';
+        toggle.setAttribute('aria-pressed', String(visible));
+        toggle.setAttribute('aria-label', visible ? 'Ocultar contraseña' : 'Mostrar contraseña');
+    });
+    window.addEventListener('pageshow', () => {
+        submitting = false;
+        submit.disabled = false;
+        form.removeAttribute('aria-busy');
+        label.textContent = 'Iniciar sesión';
+        spinner.hidden = true;
+        status.textContent = '';
+        password.type = 'password';
+        toggle.setAttribute('aria-pressed', 'false');
+        toggle.setAttribute('aria-label', 'Mostrar contraseña');
+    });
 
     const feedbackFor = (input) =>
         document.getElementById(`${input.id}-feedback`);
@@ -35,6 +61,10 @@ if (form) {
     form.noValidate = true;
 
     form.addEventListener('submit', (event) => {
+        if (submitting) {
+            event.preventDefault();
+            return;
+        }
         const emptyInputs = inputs.filter(
             (input) => input.validity.valueMissing,
         );
@@ -42,6 +72,12 @@ if (form) {
         inputs.forEach(clearFeedback);
 
         if (emptyInputs.length === 0) {
+            submitting = true;
+            submit.disabled = true;
+            form.setAttribute('aria-busy', 'true');
+            label.textContent = 'Iniciando sesión…';
+            spinner.hidden = false;
+            status.textContent = 'Comprobando tus credenciales.';
             return;
         }
 

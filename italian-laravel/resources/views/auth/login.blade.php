@@ -5,10 +5,10 @@
         <div class="login__content">
             <div class="login__brand">
                 <img
-                    src="{{ asset('images/auth/3.png') }}"
+                    src="{{ asset('assets/images/auth/logo-blanco.png') }}"
                     alt="The Italian Coffee Company"
-                    width="249"
-                    height="160"
+                    width="264"
+                    height="164"
                     class="login__logo"
                 >
             </div>
@@ -39,7 +39,7 @@
 
                 <div class="login__field">
                     <label for="username" class="visually-hidden">
-                        Username
+                        Usuario
                     </label>
 
                     <div class="login__input-wrap">
@@ -49,14 +49,14 @@
                             type="text"
                             name="username"
                             value="{{ old('username') }}"
-                            placeholder="Username"
+                            placeholder="Usuario"
                             autocomplete="username"
                             autocapitalize="none"
                             spellcheck="false"
                             required
                             aria-invalid="{{ $errors->has('username') ? 'true' : 'false' }}"
                             aria-describedby="username-feedback{{ $errors->has('username') ? ' login-errors' : '' }}"
-                            data-empty-message="Username is required"
+                            data-empty-message="Escribe tu usuario."
                         >
 
                         <span class="login__focus" aria-hidden="true"></span>
@@ -78,7 +78,7 @@
 
                 <div class="login__field">
                     <label for="password" class="visually-hidden">
-                        Password
+                        Contraseña
                     </label>
 
                     <div class="login__input-wrap">
@@ -87,12 +87,12 @@
                             class="login__input"
                             type="password"
                             name="password"
-                            placeholder="Password"
+                            placeholder="Contraseña"
                             autocomplete="current-password"
                             required
                             aria-invalid="{{ $errors->has('password') ? 'true' : 'false' }}"
                             aria-describedby="password-feedback{{ $errors->has('password') ? ' login-errors' : '' }}"
-                            data-empty-message="Password is required"
+                            data-empty-message="Escribe tu contraseña."
                         >
 
                         <span class="login__focus" aria-hidden="true"></span>
@@ -104,6 +104,12 @@
                              focusable="false">
                             <path d="M17 9h-1V6a4 4 0 0 0-8 0v3H7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2ZM10 6a2 2 0 0 1 4 0v3h-4V6Zm3 11v2h-2v-2a2 2 0 1 1 2 0Z"/>
                         </svg>
+                        <button class="login__visibility" type="button" data-password-toggle aria-label="Mostrar contraseña" aria-controls="password" aria-pressed="false" hidden>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>
+                                <path class="login__eye-slash" d="m4 4 16 16"/>
+                            </svg>
+                        </button>
                     </div>
 
                     <p id="password-feedback"
@@ -113,27 +119,16 @@
                 </div>
 
                 <button class="login__submit" type="submit">
-                    Login
+                    <span data-submit-label>Iniciar sesión</span>
+                    <span class="login__spinner" aria-hidden="true" hidden></span>
                 </button>
+                <p class="visually-hidden" role="status" aria-live="polite" data-login-status></p>
             </form>
 
-            {{-- Textos del legacy; estas funcionalidades no están disponibles. --}}
             <div class="login__recovery">
-                <span class="login__inactive-link"
-                      role="link"
-                      aria-disabled="true">
-                    Forgot Username / Password?
-                </span>
+                <p>¿Olvidaste tu usuario o contraseña?</p>
             </div>
         </div>
 
-        <div class="login__registration">
-            <span class="login__inactive-link"
-                  role="link"
-                  aria-disabled="true">
-                Create new account
-                <span aria-hidden="true">→</span>
-            </span>
-        </div>
     </section>
 @endsection

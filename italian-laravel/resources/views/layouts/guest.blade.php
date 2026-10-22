@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,7 +16,7 @@
     ])
 </head>
 <body class="guest-page"
-      style="--login-background: url('{{ asset('images/auth/team2.jpg') }}')">
+      style="--login-background: url('{{ asset('assets/images/auth/bg-ticc.webp') }}'); --login-background-mobile: url('{{ asset('assets/images/auth/bg-ticc-mobile.webp') }}')">
 <main class="guest-main">
     @yield('content')
 </main>
