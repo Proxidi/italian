@@ -4,10 +4,10 @@
     <a href="{{ route('inicio') }}"
        class="app-brand"
        aria-label="The Italian Coffee Company — Inicio">
-        <img src="{{ asset('images/authenticated/coffe.png') }}"
+        <img src="{{ asset('assets/images/auth/logo-blanco.png') }}"
              alt=""
-             width="38"
-             height="38">
+             width="54"
+             height="34">
 
         <span class="app-brand__text">
             {{ $profile['plaza'] ?: 'The Italian Coffee Company' }}
@@ -22,7 +22,7 @@
                 aria-expanded="true"
                 data-sidebar-toggle
                 hidden>
-            <x-layout.icon name="menu" />
+            <span class="hamburger" aria-hidden="true"><span></span><span></span><span></span></span>
         </button>
 
         <details class="user-menu">

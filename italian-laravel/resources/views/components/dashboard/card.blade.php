@@ -1,6 +1,6 @@
 @props(['card'])
 
-<article class="dashboard-card dashboard-card--{{ $card['tone'] }}">
+<article {{ $attributes->class('dashboard-card dashboard-card--'.$card['tone']) }}>
     @if ($card['url'])
         <a class="dashboard-card__body" href="{{ $card['url'] }}">
             <div class="dashboard-card__heading">
@@ -20,7 +20,7 @@
             <div class="dashboard-card__footer">
                 <span>{{ $card['footer_label'] }}</span>
                 <span class="dashboard-card__badge">
-                    Más información
+                    Abrir módulo
                     <x-layout.icon name="arrow" />
                 </span>
             </div>
@@ -44,7 +44,7 @@
             <div class="dashboard-card__footer">
                 <span>{{ $card['footer_label'] }}</span>
                 <span class="dashboard-card__badge dashboard-card__badge--unavailable">
-                    Más información
+                    Próximamente
                     <x-layout.icon name="lock" />
                 </span>
             </div>

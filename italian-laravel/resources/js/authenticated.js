@@ -1,3 +1,5 @@
+import './dashboard-arrival.js';
+
 const shell = document.querySelector('[data-app-shell]');
 
 if (shell) {
@@ -98,7 +100,7 @@ if (shell) {
                 { height: `${targetHeight}px` },
             ],
             {
-                duration: 500,
+                duration: 240,
                 easing: 'ease-in-out',
             },
         );
@@ -217,4 +219,22 @@ if (shell) {
             first.focus();
         }
     });
+}
+
+const userMenu = document.querySelector('.user-menu');
+if (userMenu) {
+    const trigger = userMenu.querySelector('summary');
+    userMenu.addEventListener('toggle', () => trigger.setAttribute('aria-expanded', String(userMenu.open)));
+    document.addEventListener('click', event => {
+        if (userMenu.open && !userMenu.contains(event.target)) userMenu.open = false;
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && userMenu.open) {
+            userMenu.open = false;
+            trigger.focus();
+        }
+    });
+    userMenu.addEventListener('focusout', () => queueMicrotask(() => {
+        if (!userMenu.contains(document.activeElement)) userMenu.open = false;
+    }));
 }

@@ -836,3 +836,109 @@ body.authenticated-page {
         margin: 5px 0 0;
     }
 }
+
+/* Authenticated visual language: warm surfaces, forest green and brass accents. */
+.app-shell { --header-height: 64px; transition: grid-template-columns 260ms cubic-bezier(.2,.8,.2,1); }
+.app-header { background: linear-gradient(110deg, #18382d, #244a3b); box-shadow: 0 3px 16px rgb(16 42 30 / 17%); }
+.app-brand { background: rgb(0 0 0 / 12%); transition: flex-basis 260ms ease; }
+.app-brand img { width: 54px; height: 34px; filter: drop-shadow(0 2px 2px rgb(0 0 0 / 12%)); }
+.is-collapsed .app-brand img { width: 42px; }
+.authenticated-page :focus-visible { outline-color: #67834e; }
+.header-button { border: 1px solid rgb(255 255 255 / 15%); border-radius: 12px; background: rgb(255 255 255 / 5%); transition: background 160ms ease, transform 160ms ease; }
+.header-button:hover { background: rgb(255 255 255 / 13%); }
+.header-button:active { transform: scale(.94); }
+.hamburger { display: grid; gap: 4px; width: 18px; }
+.hamburger span { display: block; width: 18px; height: 2px; background: #f3e7cd; border-radius: 2px; transition: transform 240ms ease, opacity 160ms ease; }
+.header-button[aria-expanded='true'] .hamburger span:first-child { transform: translateY(6px) rotate(45deg); }
+.header-button[aria-expanded='true'] .hamburger span:nth-child(2) { opacity: 0; }
+.header-button[aria-expanded='true'] .hamburger span:last-child { transform: translateY(-6px) rotate(-45deg); }
+.app-sidebar { background: linear-gradient(170deg, #1a3028, #17251f); scrollbar-width: thin; scrollbar-color: #617265 transparent; }
+.sidebar-list { padding: 14px 8px 24px; }
+.sidebar-entry { border-radius: 9px; margin-bottom: 3px; }
+.sidebar-entry:hover, .sidebar-entry.is-active { background: #30493a; }
+.sidebar-entry.is-active { border-left-color: #d2b479; }
+.sidebar-submenu { margin: 2px 0 6px; border-radius: 10px; background: rgb(0 0 0 / 13%); }
+.sidebar-backdrop { backdrop-filter: blur(2px); animation: shell-fade 180ms ease both; }
+.user-menu summary { min-height: 44px; padding: 5px 11px 5px 5px; border-radius: 24px; border: 1px solid rgb(255 255 255 / 14%); background: rgb(255 255 255 / 6%); transition: background 160ms ease; }
+.user-menu summary:hover, .user-menu[open] summary { background: rgb(255 255 255 / 13%); }
+.user-menu summary > img { width: 32px; height: 32px; border: 2px solid #d5bd87; }
+.user-menu__content { top: calc(100% + 12px); right: 0; border-radius: 18px; overflow: hidden; border: 1px solid #e2ded4; box-shadow: 0 18px 45px rgb(17 36 26 / 23%); transform-origin: top right; animation: user-menu-enter 160ms ease both; }
+.user-menu__hero { background: linear-gradient(135deg, #2c5240, #1c362c); padding: 24px 18px 18px; }
+.user-menu__avatar { width: 70px; height: 70px; border-color: #d4be8b; }
+.user-menu__actions { padding: 14px; background: #f8f6f1; }
+.user-menu__actions .logout-button, .profile-button { border-radius: 9px; padding: 8px 12px; }
+.user-menu__actions .logout-button { background: #234733; color: white; border-color: #234733; }
+.user-menu__actions .logout-button:hover { background: #183626; }
+.app-main:has(.dashboard-home) { background: radial-gradient(ellipse at 100% 0, #e4eadf, transparent 55%), #f5f3ed; padding: clamp(20px, 3vw, 42px); }
+.dashboard-home { max-width: 1500px; margin: 0 auto; animation: home-enter 300ms ease both; }
+.dashboard-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 30px; }
+.dashboard-eyebrow { margin: 0 0 10px !important; color: #6d705f; font-size: 10px; letter-spacing: .13em; font-weight: 700; line-height: 1.6; }
+.dashboard-heading h1 { color: #24392e; font-size: clamp(26px, 3vw, 34px); font-weight: 700; letter-spacing: -.025em; }
+.dashboard-heading > div > p:last-child { margin-top: 10px; color: #656d62; font-size: 15px; }
+.dashboard-heading__tag { padding: 8px 14px; border: 1px solid #d5ddcd; border-radius: 24px; background: #ecf0e6; color: #496044; font-size: 12px; }
+.dashboard-grid { gap: 22px; }
+.dashboard-card { --card-color: #396a5a; position: relative; border: 1px solid #e2e2d7; border-radius: 20px; background: #fffefa; box-shadow: 0 5px 0 #e2e3d9, 0 10px 22px rgb(38 51 35 / 6%); animation: card-enter 360ms ease backwards; animation-delay: var(--card-delay, 0ms); transition: transform 180ms ease, box-shadow 180ms ease; }
+.dashboard-card--blue { --card-color: #426878; }
+.dashboard-card--red { --card-color: #9b6553; }
+.dashboard-card--green { --card-color: #3f6b4b; }
+.dashboard-card--orange { --card-color: #997035; }
+.dashboard-card--purple { --card-color: #736584; }
+.dashboard-card:has(a):hover { transform: translateY(-5px); box-shadow: 0 7px 0 #d7dfce, 0 19px 28px rgb(38 51 35 / 13%); }
+.dashboard-card:has(a):active { transform: translateY(1px); box-shadow: 0 2px 0 #d7dfce, 0 5px 14px rgb(38 51 35 / 10%); }
+.dashboard-card__heading { position: relative; min-height: 130px; padding: 26px 24px 22px; gap: 17px; color: #2a392e; background: linear-gradient(130deg, color-mix(in srgb, var(--card-color) 13%, white), #fffefa 85%); border-top: 4px solid var(--card-color); }
+.dashboard-card__heading img { width: 62px; height: 62px; padding: 8px; object-fit: contain; border: 1px solid #fff; border-radius: 18px; background: #fff; box-shadow: 0 6px 12px rgb(39 48 30 / 12%); transform: rotate(-4deg); transition: transform 180ms ease; }
+.dashboard-card:has(a):hover img { transform: rotate(0) translateY(-2px); }
+.dashboard-card__heading h2 { font-weight: 700; font-size: 23px; }
+.dashboard-card__subtitle { color: #697164; font-size: 13px; margin-top: 5px; }
+.dashboard-card__footer { border-top: 1px solid #f0efe8; padding: 15px 20px; min-height: 65px; color: #626e60; font-size: 12px; }
+a.dashboard-card__body:hover .dashboard-card__footer { background: #f8faf3; }
+.dashboard-card__badge { background: #294d37; padding: 8px 12px; border-radius: 10px; font-size: 11px; }
+.dashboard-card__badge--unavailable { color: #696e64; background: #eeeee5; }
+.dashboard-card__availability { padding: 0 20px 16px; font-size: 11px; color: #72786d; }
+.app-footer { background: #fffefa; border-color: #e3e3d9; }
+.arrival-dialog { width: min(460px, calc(100% - 32px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid #dedecf; border-radius: 25px; color: #263e30; background: #fffdf7; box-shadow: 0 35px 100px rgb(0 0 0 / 30%); overflow-y: auto; }
+.arrival-dialog[open] { animation: arrival-enter 240ms cubic-bezier(.2,.8,.2,1) both; }
+.arrival-dialog::backdrop { background: rgb(14 28 20 / 62%); backdrop-filter: blur(5px); }
+.arrival-welcome-brand { display: grid; place-items: center; padding: 28px; background: radial-gradient(ellipse at top right, #536044, transparent), linear-gradient(130deg, #244c37, #1c3027); }
+.arrival-welcome-brand img { width: 118px; height: auto; }
+.arrival-dialog__body { padding: 30px 34px 25px; }
+.arrival-dialog h2 { margin: 0 0 17px; font-size: clamp(27px, 5vw, 34px); font-weight: 700; line-height: 1.18; letter-spacing: -.025em; }
+.arrival-dialog h2 span { color: #7c622e; }
+.arrival-dialog h2:focus { outline: none; }
+.arrival-dialog__body > p:not(.dashboard-eyebrow) { color: #687061; line-height: 1.65; }
+.arrival-button { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 24px; padding: 14px 18px; border: 1px solid #274c34; border-radius: 12px; background: linear-gradient(120deg, #365c40, #244831); color: #fff; box-shadow: 0 4px 0 #173421; font-weight: 600; cursor: pointer; transition: transform 150ms ease; }
+.arrival-button:hover:not(:disabled) { transform: translateY(-2px); }
+.arrival-button:active:not(:disabled) { transform: translateY(2px); }
+.arrival-button:disabled { color: #626751; border-color: #dddfcc; background: #e9ebdf; box-shadow: none; cursor: wait; }
+.arrival-dialog__body .arrival-caption { text-align: center; margin: 18px 0 0; font-size: 11px; }
+.arrival-alert-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 24px; }
+.arrival-alert-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 17px; background: #fff0d9; border: 1px solid #ebc895; color: #945200; font-size: 29px; font-weight: 700; box-shadow: 0 4px 0 #f3dfbd; }
+.arrival-demo-label { padding: 5px 9px; border-radius: 6px; background: #f0eee4; color: #6a695a; font-size: 9px; font-weight: 700; letter-spacing: .07em; }
+.arrival-pending-item { display: flex; align-items: flex-start; gap: 12px; padding: 17px; margin-top: 20px; border: 1px solid #eed4a9; border-radius: 14px; background: #fff7e9; }
+.arrival-pending-item strong { color: #805018; }
+.arrival-pending-item p { margin: 5px 0 0; font-size: 13px; line-height: 1.5; color: #79664e; }
+.arrival-severity-dot { flex-shrink: 0; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: #bc741e; box-shadow: 0 0 0 4px #f4e4c6; }
+.arrival-demo-note { font-size: 11px; }
+@keyframes home-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes card-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes arrival-enter { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes user-menu-enter { from { opacity: 0; transform: translateY(-5px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes shell-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 900px) {
+    .app-brand { flex-basis: auto; max-width: 55%; }
+    .app-sidebar { transition: transform 260ms cubic-bezier(.2,.8,.2,1); }
+    .app-shell { transition: none; }
+    .app-header__tools { gap: 10px; }
+}
+@media (max-width: 560px) {
+    .dashboard-heading { margin-bottom: 24px; }
+    .dashboard-heading__tag { display: none; }
+    .dashboard-card__heading { padding: 22px; min-height: 120px; }
+    .arrival-dialog__body { padding: 26px 24px 24px; }
+    .app-footer { padding: 10px 14px; font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .app-shell, .app-sidebar, .app-brand, .sidebar-chevron, .hamburger span,
+    .header-button, .user-menu summary, .dashboard-card, .dashboard-card img, .arrival-button { transition: none !important; }
+    .dashboard-home, .dashboard-card, .arrival-dialog[open], .user-menu__content, .sidebar-backdrop { animation: none !important; }
+}
