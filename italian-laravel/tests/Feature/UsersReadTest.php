@@ -629,6 +629,29 @@ class UsersReadTest extends TestCase
         $this->assertEqualsCanonicalizing(['admin', 'socio'], $subject->getRoleNames()->all());
     }
 
+    public function test_logout_requires_csrf_and_invalidates_the_authenticated_session(): void
+    {
+        // Enable real CSRF verification while retaining this test's isolated SQLite DB.
+        $this->app['env'] = 'local';
+        $token = str_repeat('a', 40);
+        $user = $this->createUser('root');
+        $this->actingAs($user, 'web')->withSession([
+            '_token' => $token,
+            'logout-test-marker' => 'must-be-cleared',
+        ])->get(route('inicio'))->assertOk()
+            ->assertSee('action="'.route('logout').'" method="POST"', false);
+
+        $this->post(route('logout'))->assertStatus(419);
+        $this->assertAuthenticatedAs($user, 'web');
+
+        $this->post(route('logout'), ['_token' => $token])
+            ->assertRedirect(route('login'))
+            ->assertSessionMissing('logout-test-marker');
+        $this->assertGuest('web');
+        $this->assertNotSame($token, session()->token());
+        $this->get(route('inicio'))->assertRedirect(route('login'));
+    }
+
     public function test_changed_role_and_password_remain_compatible_with_legacy_login(): void
     {
         $this->enableWrites();

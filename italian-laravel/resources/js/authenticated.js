@@ -234,7 +234,11 @@ if (userMenu) {
             trigger.focus();
         }
     });
-    userMenu.addEventListener('focusout', () => queueMicrotask(() => {
-        if (!userMenu.contains(document.activeElement)) userMenu.open = false;
-    }));
+    userMenu.addEventListener('focusout', event => {
+        // During pointer focus changes, activeElement can briefly be body.
+        // Use the destination so an internal button can receive its click/submit.
+        if (event.relatedTarget && !userMenu.contains(event.relatedTarget)) {
+            userMenu.open = false;
+        }
+    });
 }
