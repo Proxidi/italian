@@ -290,7 +290,7 @@ class ProductsUnitsTest extends TestCase
         $this->seed(ProductsPermissionsSeeder::class);
         $this->assertSame(5, Permission::count());
         $this->assertTrue(Role::findByName('admin', 'web')->hasPermissionTo('other.view'));
-        $this->assertFalse(Role::findByName('admin', 'web')->hasPermissionTo('products.view'));
+        $this->assertTrue(Role::findByName('admin', 'web')->hasPermissionTo('products.view'));
         $this->assertTrue($actor->fresh()->hasDirectPermission('products.units.view'));
         $this->actingAs($actor->fresh(), 'web')->get(route('products.units.index'))->assertOk();
     }

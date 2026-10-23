@@ -386,9 +386,9 @@ class ConfigurationTest extends TestCase
         $this->seed(ConfigurationPermissionsSeeder::class);
         $this->seed(ConfigurationPermissionsSeeder::class);
         $this->assertTrue($admin->fresh()->hasPermissionTo('other-module.view'));
-        $this->assertFalse($admin->fresh()->hasPermissionTo('configuration.view'));
+        $this->assertTrue($admin->fresh()->hasPermissionTo('configuration.view'));
         $this->assertTrue($actor->fresh()->hasDirectPermission('configuration.notifications.view'));
         $this->assertDatabaseCount('permissions', 6);
-        $this->assertDatabaseCount('role_has_permissions', 6);
+        $this->assertDatabaseCount('role_has_permissions', 7);
     }
 }

@@ -2,36 +2,11 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
+use App\Support\CorePermissions;
 
-class ConfigurationPermissionsSeeder extends Seeder
+class ConfigurationPermissionsSeeder extends ModulePermissionsSeeder
 {
-    public const PERMISSIONS = [
-        'configuration.view',
-        'configuration.upload-window.view',
-        'configuration.upload-window.update',
-        'configuration.notifications.view',
-        'configuration.notifications.update',
-    ];
+    public const PERMISSIONS = CorePermissions::GROUPS['configuration'];
 
-    public function run(): void
-    {
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-
-        try {
-            DB::transaction(function (): void {
-                $root = Role::findByName('root', 'web');
-
-                foreach (self::PERMISSIONS as $name) {
-                    Permission::findOrCreate($name, 'web')->roles()->sync([$root->getKey()]);
-                }
-            });
-        } finally {
-            app(PermissionRegistrar::class)->forgetCachedPermissions();
-        }
-    }
+    protected string $group = 'configuration';
 }

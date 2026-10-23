@@ -79,9 +79,10 @@ class CoreSchemaTest extends TestCase
             'plazas', 'usuarios', 'bitacora_accesos', 'password_reset_tokens', 'sessions',
             'cache', 'cache_locks', 'jobs', 'job_batches', 'failed_jobs',
             'roles', 'permissions', 'model_has_roles', 'model_has_permissions', 'role_has_permissions',
-            'migrations',
+            'migrations', 'inicializaciones_sistema',
         ];
-        $this->assertEqualsCanonicalizing($expected, Schema::getTableListing(schemaQualified: false));
+        $schema = DB::getDriverName() === 'mysql' ? DB::connection()->getDatabaseName() : null;
+        $this->assertEqualsCanonicalizing($expected, Schema::getTableListing(schema: $schema, schemaQualified: false));
         foreach (array_diff($expected, ['migrations']) as $table) {
             $this->assertSame(0, DB::table($table)->count());
         }

@@ -54,9 +54,10 @@ normal y autenticar contra una nueva tabla de usuarios con hashes modernos y
 Spatie. La convivencia con SHA-1 y tablas legacy es temporal.
 
 **Estado actualizado:** las etapas 0/1 preparan conexiones, migrations y modelos
-de `plazas`, `usuarios` y `bitacora_accesos` (detalle al final). Siguen pendientes
-los esquemas de otros módulos, importadores, transición de credenciales y retiro
-de compatibilidad. No renombrar tablas existentes ni ejecutar migrations o
+de `plazas`, `usuarios` y `bitacora_accesos`; la etapa 2 implementa importadores
+y bootstrap Spatie seguros (detalle al final), probados con datos sintéticos.
+Siguen pendientes la importación real supervisada, esquemas de otros módulos,
+transición de credenciales y retiro de compatibilidad. No renombrar tablas existentes ni ejecutar migrations o
 importadores sin alcance y destino autorizados.
 
 El código Laravel actual usa el esquema legacy, pero eso no demuestra que ambos
@@ -2055,3 +2056,235 @@ sobrescribir futuras decisiones administrativas. Después se adaptarán proveedo
 login/rehash, Usuarios, bitácora e Inicio. Configurar/Productos y la dependencia
 real de avisos de Corte mantienen su implementación actual y esperan sus propias
 etapas. No se modificó `italian-legacy/` ni se inició Pedidos.
+
+## BD nueva, etapa 2: importadores del núcleo (2026-10-23)
+
+### Estado comprobado y alcance
+
+Implementados los comandos `legacy:validar-nucleo`, `legacy:inicializar-permisos`,
+`legacy:importar-plazas`, `legacy:importar-usuarios` y `legacy:importar-accesos`.
+Los cuatro comandos que escriben admiten `--dry-run`; los de datos y validación
+admiten `--lote=500`, entero de 1 a 2000. No aceptan nombres arbitrarios de
+conexión, base o tabla. Las reglas de consulta y transformación están encapsuladas
+en `app/Services/Legacy/`; la presentación del reporte está en un comando base.
+
+El responsable informa que ejecutó las migrations de etapas 0/1 localmente.
+Esta intervención no ejecutó importaciones, seeders ni migrations sobre sus
+bases. No existe aquí una conexión persistente segura al origen: la cuenta
+`LEGACY_DB_USERNAME` del checkout sigue sin configurar. No se modificaron `.env`,
+credenciales, autenticación, UI, módulos funcionales, CodeIgniter ni el dump.
+El archivo `italian.sql` disponible contiene **63 563 filas de bitácora**; es un
+conteo de ese archivo, no una afirmación sobre producción ni la fuente local actual.
+Cada comando consulta y reporta los conteos reales de sus conexiones efectivas.
+
+### Conexiones y preflight
+
+`ImportConnections` verifica con `SELECT DATABASE()` y `CURRENT_USER()` que
+origen y destino sean distintos y usen cuentas independientes. Lee únicamente
+de `legacy`, fuente efectiva `italian`; escribe únicamente en `mysql`, destino
+efectivo `italian_laravel`. Rechaza prefijos y réplicas, conexiones ajenas a MySQL,
+cuenta legacy vacía, bases inesperadas y configuraciones Spatie incompatibles.
+Exige utf8mb4 negociado, modo estricto y FKs activas en el destino. No hay fallback
+de credenciales. Se conservan las variables `DB_*` / `LEGACY_DB_*` ya documentadas.
+
+La cuenta legacy debe tener SELECT directo, sin GRANT OPTION, privilegios de
+escritura, privilegios dinámicos ni roles heredados/activos. Se comprueban
+`SHOW GRANTS FOR CURRENT_USER` y `CURRENT_ROLE()`. USAGE es admisible; formatos
+desconocidos se rechazan, incluyendo grants por columnas. No se intenta probar
+escrituras contra una fuente real. Configurar y revisar previamente la cuenta
+SELECT como en etapas 0/1; no reutilizar la cuenta de CodeIgniter. Se requiere
+lectura de las cuatro tablas del núcleo y de sus metadatos.
+
+Las únicas excepciones son los nombres fijos `italian_stage02_source_tests` y
+`italian_stage02_target_tests`, con `APP_ENV=testing` y opt-in de configuración
+interno a la prueba. No existe un flag CLI para autorizar cualquier base.
+
+Los errores de BD se capturan sin imprimir SQL, bindings, credenciales, valores
+de usuario ni hashes. Los reportes muestran conteos, IDs numéricos y códigos de
+motivo, con hasta 25 muestras por conjunto. No se escriben logs de filas.
+
+### Bootstrap y seeders
+
+`CorePermissions` centraliza los **22 permisos actuales**, agrupados por los
+siete seeders existentes, y el mapeo ID/nombre técnico/etiqueta de los cinco roles.
+Las etiquetas Dueño, Manager, Gerente, SubManager y Socio quedan disponibles en
+ese catálogo para la futura UI del núcleo, sin añadir una columna redundante a
+Spatie ni adaptar todavía pantallas.
+
+`legacy:inicializar-permisos` comprueba primero el catálogo de roles legacy y
+solo inicializa una instalación sin usuarios ni catálogo/asignaciones Spatie.
+Crea roles web con IDs 1–5 y permisos en una transacción: root recibe los 22;
+superadmin únicamente `access-log.view`; admin, submanager y socio ninguno nuevo.
+Son **23 relaciones rol–permiso**, sin bypass de superadmin.
+
+Una nueva migration agrega `inicializaciones_sistema` (`clave`, `version`,
+`created_at`). El marcador `permisos_nucleo_v1` guarda la huella del catálogo y la
+fecha real del bootstrap, no fechas históricas inventadas. Marcador, catálogo y
+matriz se confirman juntos. Una instalación con datos previos sin marcador se
+reporta en conflicto: no se adopta ni reconcilia silenciosamente. Al repetir con
+marcador se comprueba la identidad del catálogo y se conservan las concesiones,
+revocaciones y permisos directos posteriores, incluso si difieren de la matriz.
+
+Los seeders de módulos reutilizan `ModulePermissionsSeeder`: un permiso recién
+creado recibe sus concesiones iniciales; uno existente conserva sus asignaciones.
+Ya no utilizan `sync()` para imponer la matriz. El catálogo no es una interfaz de
+administración de permisos. `DatabaseSeeder` delega al bootstrap protegido y ya
+no crea un usuario ficticio. `CorePermissionsSeeder` ofrece la misma inicialización;
+se recomienda el comando por su preflight y dry-run. `LegacyUserRolesSeeder`
+se mantiene como punto de entrada que falla con instrucciones: ya no sincroniza
+usuarios legacy ni restaura roles operativos.
+
+La invalidación de caché de Spatie sucede solo tras una inicialización real;
+se revisa su destino antes de escribir. Para este bootstrap se admiten los stores
+array/file/null o database en `mysql.cache`; una configuración que apunte la
+caché a `legacy`, u otro store no revisado, se rechaza. El dry-run no llama al
+seeder, `firstOrCreate()` ni a invalidaciones de caché, aunque el store sea database.
+
+### Contratos de datos y conflictos
+
+| Origen | Destino y transformación |
+| --- | --- |
+| `tbl_plazas` | `id`, `Nombre → nombre`, `Acronimo → acronimo`, literales. No se añade unicidad de nombres/acrónimos. |
+| `tbl_usuarios` | Conserva ID; `Nombre → nombre`, `Apepat → apellido_paterno`, `Apemat → apellido_materno`, `Edad → edad`, `Sexo → sexo`, `Email → email`, `Usuario → usuario`, `Password → password`, `plaza_id` intacto. |
+| `tbl_usuarios.rol_id` | Mapeo confirmado a un único rol web, pivot `model_has_roles` con `model_type=usuario`; no columna `rol_id` nueva. Usuario y pivot se insertan en la misma transacción. |
+| `tbl_bitacora_accesos` | ID, `Fecha → fecha`, `Hora → hora`, `usuario_id` y `plaza_id` literales. La plaza histórica no se sustituye por la actual del usuario. |
+
+No se copian `Hash` ni `sha1_id`. El password debe ser un SHA-1 de 40 caracteres
+hexadecimales y se copia exactamente, sin hasher/cast ni rehash. Los históricos
+entran con `created_at`, `updated_at` y `remember_token` NULL. No se altera un
+password ya modernizado o una asignación de rol modificada en Laravel.
+
+Se validan IDs positivos compatibles, longitudes, textos obligatorios no vacíos,
+UTF-8 y ausencia de caracteres de control. Edad conserva el rango del TINYINT
+firmado; no se inventan edades mínimas, enum de sexo ni reglas nuevas de formato
+de email. Se comprueban plazas, usuarios y roles en origen/destino. Las fechas
+deben ser DATE válidos y las horas de accesos `00:00:00`–`23:59:59`: fechas cero
+y TIME que represente una duración negativa o mayor a 23 horas se rechazan,
+sin normalizarlos. Cada caso requiere revisión de los datos, no corrección automática.
+
+La unicidad de email/usuario se evalúa con la collation real de cada columna
+del destino: mayúsculas, acentos y espacios finales pueden ser equivalentes.
+También se buscan duplicados entre filas del origen convirtiendo en MySQL a
+utf8mb4 y aplicando esa collation. La conexión utf8mb4 deja que MySQL convierta
+latin1; no se aplica una segunda conversión manual. La validación estructural
+UTF-8 no puede determinar si un texto ya contiene mojibake semántico: revisar
+visualmente muestras autorizadas antes de activar el núcleo, sin autocorregirlas.
+
+Se valida el conjunto completo antes de insertar. Cada fila queda como pendiente,
+idéntica, rechazada o en conflicto. **Cualquier rechazo/conflicto evita todas las
+escrituras de ese conjunto en esa ejecución.** Filas con un mismo ID y otros
+valores, usuarios con distinto password/rol, roles múltiples, pivots huérfanos y
+colisiones de email/usuario se preservan y reportan. No existe `--force`, upsert,
+DELETE, truncado ni actualización de datos operativos.
+
+Tras una validación limpia se vuelven a comprobar los lotes dentro de transacciones.
+La bitácora precarga filas y referencias por lote, sin consultas por cada acceso.
+Una interrupción revierte el lote activo; los anteriores permanecen confirmados.
+Repetir el mismo comando reconoce los IDs idénticos y continúa sin duplicarlos.
+Usar una copia de origen estable o una ventana sin cambios concurrentes: esto
+no es una sincronización en vivo ni bidireccional, y no impone locks sobre legacy.
+
+Se informa el AUTO_INCREMENT efectivo mediante `SHOW CREATE TABLE`, evitando
+la caché de estadísticas de `information_schema` de MySQL 8.4. Al terminar una
+importación limpia se eleva **solo el contador del destino**, si hace falta, para
+reservar también IDs ya consumidos/eliminados en la fuente. Es un
+`ALTER TABLE ... AUTO_INCREMENT`, fuera de las transacciones de filas; no cambia
+columnas ni índices. El usuario del destino debe disponer de ALTER. Un fallo al
+reservarlo se reporta y puede reintentarse; no activar escrituras operativas hasta
+que termine correctamente. Dry-run/validación no alteran contadores. Nunca se
+reduce el siguiente ID ni se escribe en la fuente.
+
+`legacy:validar-nucleo` ejecuta una prevalidación global sin escrituras: simula
+las dependencias que se importarán en orden y se detiene si falla un conjunto.
+Esto permite revisar una instalación vacía. Los dry-runs individuales sí exigen
+que sus dependencias existan realmente en destino. Tras importar, la validación
+global compara IDs/filas, roles y unicidad, y comprueba referencias de todos los
+usuarios/accesos y pivots `usuario`, incluidos registros adicionales del destino.
+Que el destino tenga filas adicionales no autoriza borrarlas ni exige conteos iguales.
+
+### Ejecución local supervisada
+
+Mantener las variables `DB_*` / `LEGACY_DB_*` descritas en etapas 0/1, con cuentas
+independientes; configurar los secretos solo localmente. Desde `italian-laravel/`,
+con la cuenta SELECT ya preparada y una copia estable del origen:
+
+```sh
+./vendor/bin/sail artisan config:clear
+./vendor/bin/sail artisan tinker --execute='dump(DB::connection("mysql")->selectOne("SELECT DATABASE() AS db"));'
+```
+
+Confirmar `italian_laravel` antes de ejecutar la migration aditiva de etapa 2.
+No volver a aplicar el scaffold inicial ni recrear tablas que ya tengan datos:
+
+```sh
+./vendor/bin/sail artisan migrate --database=mysql
+./vendor/bin/sail artisan legacy:validar-nucleo
+./vendor/bin/sail artisan legacy:inicializar-permisos --dry-run
+./vendor/bin/sail artisan legacy:importar-plazas --dry-run
+./vendor/bin/sail artisan legacy:inicializar-permisos
+./vendor/bin/sail artisan legacy:importar-plazas
+./vendor/bin/sail artisan legacy:importar-usuarios --dry-run
+./vendor/bin/sail artisan legacy:importar-usuarios
+./vendor/bin/sail artisan legacy:importar-accesos --dry-run --lote=500
+./vendor/bin/sail artisan legacy:importar-accesos --lote=500
+./vendor/bin/sail artisan legacy:validar-nucleo
+```
+
+Detenerse y revisar el reporte ante código de salida distinto de cero. No ejecutar
+la siguiente operación si hay conflictos. No usar `migrate:fresh`, `db:wipe`, el
+dump completo, el seeder de roles legacy ni `--database=legacy`. Para reanudar,
+repetir el importador; para repetir bootstrap no borrar su marcador. En un entorno
+limpio: crear únicamente destino/cuentas, verificar bases/grants, ejecutar migrations,
+prevalidar, aplicar bootstrap e importar en el orden anterior. Los datos reales
+nunca se obtienen desde factories o seeders.
+
+### Pruebas y etapa siguiente
+
+Las pruebas usan PHP 8.5.11 y un contenedor descartable MySQL **8.4.13**, sin
+puertos publicados y con datadir tmpfs. Se crean únicamente esquemas de pruebas,
+dos cuentas distintas (lector SELECT real y escritor del destino) y fixtures
+sintéticos. No se importó el dump. Las conexiones de pruebas ignoran `.env` y
+`DB_URL`. `LegacyCoreImportTest` exige opt-in `CORE_IMPORT_MYSQL=1`; utiliza
+`CORE_IMPORT_MYSQL_HOST/PORT` y `CORE_IMPORT_MYSQL_ADMIN/ADMIN_PASSWORD` solo para
+la preparación de fixtures en la fuente descartable, nunca la fuente real.
+Los esquemas fijos deben existir previamente. Las cuentas sintéticas
+`stage02_reader` y `stage02_app` usan la clave de prueba `stage02-test-only`:
+no son credenciales de despliegue. Conceder SELECT al lector solo en los dos
+esquemas de pruebas (el segundo permite probar el rechazo de base idéntica) y
+ALL al escritor únicamente en `italian_stage02_target_tests`.
+
+Ejemplo de ejecución dentro del PHP de Sail, **solo después de preparar esos
+esquemas/cuentas descartables**:
+
+```sh
+./vendor/bin/sail exec -e CORE_IMPORT_MYSQL=1 -e CORE_IMPORT_MYSQL_HOST=mysql laravel.test php vendor/bin/phpunit tests/Feature/LegacyCoreImportTest.php --do-not-cache-result
+```
+
+Si el administrador de esa instancia de pruebas necesita contraseña, pasarla
+por entorno local protegido; no añadirla al comando versionado ni a `.env` del
+proyecto. La suite prepara/retira únicamente sus tablas sintéticas y ejecuta las
+migrations/rollback del destino de pruebas. Los tests de grants comprueban que
+el lector realmente recibe error 1142 al intentar escribir en el origen ficticio.
+
+Cobertura: bases/cuentas efectivas, grants, dry-run con caché database, importación
+repetida, conflictos/roles/uniquidad, FK/referencias huérfanas, cinco mapeos Spatie,
+SHA-1, latin1/acentos, fechas/horas históricas, atomicidad usuario–rol, interrupción
+y reanudación por lotes, reservas AUTO_INCREMENT, fuente sin modificaciones,
+bootstrap repetido y preservación de concesiones/revocaciones administrativas.
+Resultados: **38 pruebas / 648 aserciones** de importadores en MySQL; esquema
+completo **11 / 128 en SQLite** y **11 / 151 en MySQL**; regresión dirigida de los
+seeders/permisos afectados en Usuarios, Configurar, Medidas, Insumos, Productos
+y Costo de Venta **12 / 119 en SQLite**. Pint `--test` pasó en los **30 archivos
+PHP** modificados/nuevos; `git diff --check` sin errores. No se compiló Vite porque
+no cambiaron assets. Se comprobó además que `.env`, auth, controladores, vistas,
+legacy y dump no tienen cambios. El contenedor MySQL descartable se retira al
+finalizar; no quedan bases persistentes creadas por esta intervención.
+
+Pendiente operativo de etapa 2: revisar y ejecutar los importadores con datos
+reales en la instalación del responsable, y confirmar sus reportes.
+Etapa 3 pendiente: activar `Usuario` como proveedor, adaptar Login/Usuarios/bitácora/Inicio y probar
+el rehash solo después de una autenticación correcta. Las pantallas actuales
+siguen usando el modelo legacy y no quedan habilitadas por importar el núcleo.
+La consulta de Corte a `tbl_reporte_ventas` y los avisos reales siguen siendo
+requisitos por resolver; los modales mock no los sustituyen. Configurar y Productos
+esperan sus etapas de persistencia. No se inició Pedidos.

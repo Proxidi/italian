@@ -511,8 +511,8 @@ class UsersReadTest extends TestCase
             ->givePermissionTo($extra);
 
         /*
-         * Simula una asignación incorrecta previa. El seeder debe retirarla,
-         * pues la matriz inicial es parte del contrato del módulo.
+         * Una concesión administrativa posterior debe conservarse al repetir
+         * el seeder; la matriz inicial ya no se impone con sync().
          */
         Role::findByName('admin', 'web')
             ->givePermissionTo('users.directory.view');
@@ -526,7 +526,7 @@ class UsersReadTest extends TestCase
             $admin->hasPermissionTo('other-module.view'),
         );
 
-        $this->assertFalse(
+        $this->assertTrue(
             $admin->hasPermissionTo('users.directory.view'),
         );
 

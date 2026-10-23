@@ -2,28 +2,11 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
+use App\Support\CorePermissions;
 
-class IngredientsPermissionsSeeder extends Seeder
+class IngredientsPermissionsSeeder extends ModulePermissionsSeeder
 {
-    public const PERMISSIONS = ['products.ingredients.view', 'products.ingredients.conversions.update'];
+    public const PERMISSIONS = CorePermissions::GROUPS['ingredients'];
 
-    public function run(): void
-    {
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-        try {
-            DB::transaction(function (): void {
-                $root = Role::findByName('root', 'web');
-                foreach (self::PERMISSIONS as $name) {
-                    Permission::findOrCreate($name, 'web')->roles()->sync([$root->getKey()]);
-                }
-            });
-        } finally {
-            app(PermissionRegistrar::class)->forgetCachedPermissions();
-        }
-    }
+    protected string $group = 'ingredients';
 }
