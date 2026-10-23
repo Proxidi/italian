@@ -75,7 +75,7 @@ La base legacy actual es una **restricción temporal**, no el diseño objetivo d
 
 Dirección confirmada por el Ing. Javi: Laravel tendrá tablas nuevas con nombres de negocio en español, minúsculas y `snake_case`, migradas progresivamente por módulo mediante migrations y modelos con relaciones Eloquent apropiadas. Conservar convenciones técnicas Laravel/Spatie cuando simplifiquen integraciones. La tabla autenticable definitiva es `usuarios`. Conservar los IDs legacy cuando sea viable e importar datos reales mediante procesos reproducibles; reservar seeders preferentemente para datos iniciales/configuración. El objetivo es abandonar las tablas `tbl_*` en la operación normal, con hashes modernos y Spatie. Los contratos y el plan de transición de cada módulo siguen pendientes; ejecutar migrations/importaciones requiere alcance y destino autorizados.
 
-El núcleo tiene migrations, modelos e importadores preparados (`plazas`, `usuarios`, `bitacora_accesos`), todavía sin importación real verificada ni activación de `Usuario` como proveedor. La etapa 2 incorpora `legacy:validar-nucleo`, bootstrap de Spatie y `legacy:importar-*` con `--dry-run`; conservar conflictos sin sobrescribir datos, hashes ni roles operativos. La matriz inicial se registra una sola vez en `inicializaciones_sistema`; los seeders habituales no deben revertir concesiones/revocaciones administrativas ni sustituir importadores de datos reales. La conexión principal debe usar `italian_laravel`; `legacy` apunta a `italian` solo para importadores, con una cuenta SELECT independiente. No importar el dump completo al destino ni ejecutar migrations/seeders sobre `legacy`. Verificar configuración efectiva, bases distintas y grants antes de cualquier escritura. No redirigir controladores funcionales a la fuente para compensar pantallas aún no adaptadas.
+El núcleo funcional de la etapa 3 usa `Usuario` como proveedor Eloquent de `web`, con `usuarios`, `plazas`, `bitacora_accesos` y Spatie. El responsable reportó la importación local correcta; nuestras pruebas usan datos sintéticos, no verifican su BD real. Configurar y Productos aún esperan su adaptación de persistencia: no consultar sus tablas para autenticar o cargar Inicio. La etapa 2 incorpora `legacy:validar-nucleo`, bootstrap de Spatie y `legacy:importar-*` con `--dry-run`; conservar conflictos sin sobrescribir datos, hashes ni roles operativos. La matriz inicial se registra una sola vez en `inicializaciones_sistema`; los seeders habituales no deben revertir concesiones/revocaciones administrativas ni sustituir importadores de datos reales. La conexión principal debe usar `italian_laravel`; `legacy` apunta a `italian` solo para importadores, con una cuenta SELECT independiente. No importar el dump completo al destino ni ejecutar migrations/seeders sobre `legacy`. Verificar configuración efectiva, bases distintas y grants antes de cualquier escritura. No redirigir controladores funcionales a la fuente para compensar pantallas aún no adaptadas.
 
 Mientras se trabaja contra la BD legacy:
 
@@ -89,20 +89,17 @@ Cuando llegue el nuevo esquema, adaptar la capa de persistencia sin alterar inne
 
 ## Convivencia temporal con CodeIgniter
 
-El código Laravel actual está adaptado al esquema legacy para la convivencia con CodeIgniter. Comprobar las conexiones efectivas antes de afirmar que un despliegue concreto comparte la misma instancia de base de datos.
+CodeIgniter conserva sus datos y SHA-1 en `italian`; Laravel no escribe en ese origen. Comprobar conexiones efectivas antes de afirmar que un despliegue concreto comparte una instancia de BD.
 
-`tbl_usuarios.Password` usa SHA-1 porque CodeIgniter todavía depende de ese formato.
+En el núcleo nuevo:
 
-Mientras exista esta convivencia:
+- `PasswordCompatibility` permite temporalmente leer los SHA-1 importados en `usuarios.password`, sin casts automáticos ni transformación durante la importación.
+- Solo después de verificar una contraseña correcta se reemplaza ese SHA-1 en la BD nueva por un hash moderno. El valor se vuelve a comprobar con bloqueo para proteger cambios concurrentes.
+- El hasher predeterminado es Argon2id (64 MiB, dos iteraciones, un hilo), manteniendo verificaciones de algoritmos. BCrypt/Argon anteriores se verifican con su driver nativo antes de modernizarlos.
+- Altas y cambios explícitos de contraseña generan exclusivamente hashes modernos. Edición con contraseña vacía conserva el hash más reciente; nunca enviar el hash al formulario.
+- No volver a escribir SHA-1 ni restablecer contraseñas/roles operativos desde importadores o seeders.
 
-- Laravel debe validar temporalmente SHA-1;
-- El login NO debe rehashear ni reemplazar `tbl_usuarios.Password`;
-- Las altas y los cambios explícitos de contraseña autorizados deben escribir temporalmente SHA-1. En edición, dejar el campo vacío conserva la contraseña; nunca enviar el hash existente al formulario;
-- no usar cast `hashed`, `Hash::make()`, `Hash::needsRehash()` ni migración automática de contraseña durante login.
-
-Estas reglas de SHA-1 se aplican al modelo/flujo legacy actual y no autorizan escribir en `italian`. El futuro rehash se hará solo sobre `usuarios` en la BD nueva, después de validar correctamente el login. Todavía no está implementado ni activado.
-
-Los avisos reales de Corte y pendientes siguen siendo requisitos. El mock visual actual no los sustituye: no eliminar la consulta de Login a `tbl_reporte_ventas` ni clasificarla como obsoleta sin autorización; su dependencia se resolverá en una etapa posterior.
+Los avisos reales de Corte y pendientes siguen siendo requisitos. Por autorización de la etapa 3, Login ya no consulta `tbl_reporte_ventas`: el contrato de fecha de hace dos días/plaza y sus campos históricos `msj`/`hoy` quedan documentados para una integración posterior con Ventas migrado. El mock visual no los sustituye ni representa datos operativos.
 
 ## Roles y permisos
 
@@ -118,7 +115,7 @@ Reglas:
 
 - `admin` y `submanager` son roles distintos aunque compartan parte de la UI.
 - No crear un bypass global para `superadmin`.
-- Mientras exista convivencia, `tbl_usuarios.rol_id` sigue siendo la fuente legacy de rol y debe mantenerse sincronizado con Spatie cuando corresponda.
+- `tbl_usuarios.rol_id` solo corresponde al mapeo de importación. La fuente operativa es Spatie; no sincronizar roles durante Login. El formulario administrativo asigna un único rol web mediante `role_id` como input, sin columna duplicada en `usuarios`.
 - No usar `rol_id` como nuevo mecanismo de autorización Laravel.
 - Laravel debe expresar capacidades mediante permisos semánticos Spatie.
 

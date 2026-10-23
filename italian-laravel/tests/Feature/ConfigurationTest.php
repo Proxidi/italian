@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
+use App\Models\Usuario;
 use Database\Seeders\ConfigurationPermissionsSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -12,10 +12,13 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\NativeCoreFixtures;
 use Tests\TestCase;
 
 class ConfigurationTest extends TestCase
 {
+    use NativeCoreFixtures;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -37,14 +40,7 @@ class ConfigurationTest extends TestCase
             $table->increments('id');
             $table->string('Nombre');
         });
-        Schema::create('tbl_usuarios', function (Blueprint $table): void {
-            $table->increments('id');
-            $table->string('Nombre');
-            $table->string('Usuario');
-            $table->string('Sexo');
-            $table->integer('plaza_id');
-            $table->integer('rol_id');
-        });
+        $this->createNativeCoreSchema();
         Schema::create('tbl_rango_archivos', function (Blueprint $table): void {
             $table->tinyIncrements('id');
             $table->tinyInteger('Numero_Dias');
@@ -93,16 +89,9 @@ class ConfigurationTest extends TestCase
         parent::tearDown();
     }
 
-    protected function actor(string $role = 'root'): User
+    protected function actor(string $role = 'root'): Usuario
     {
-        $id = DB::table('tbl_usuarios')->insertGetId([
-            'Nombre' => 'Gerente sintético', 'Usuario' => 'persona', 'Sexo' => 'H', 'plaza_id' => 1,
-            'rol_id' => ['superadmin' => 1, 'admin' => 2, 'root' => 3, 'submanager' => 4, 'socio' => 5][$role],
-        ]);
-        $user = User::findOrFail($id);
-        $user->assignRole($role);
-
-        return $user;
+        return $this->nativeUser($role);
     }
 
     private function snapshot(): array

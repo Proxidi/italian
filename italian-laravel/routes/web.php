@@ -116,7 +116,7 @@ Route::middleware('auth:web')->group(function () {
     });
 
     Route::post('/Usuarios', [UsersWriteController::class, 'store'])
-        ->middleware('can:create,App\\Models\\User')->name('usuarios.store');
+        ->middleware('can:create,App\\Models\\Usuario')->name('usuarios.store');
     Route::get('/Usuarios/{user}/editar', [UsersWriteController::class, 'edit'])
         ->middleware('can:update,user')->whereNumber('user')->name('usuarios.edit');
     Route::put('/Usuarios/{user}', [UsersWriteController::class, 'update'])

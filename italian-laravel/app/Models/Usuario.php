@@ -2,16 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
-// Prepared for the new schema; the active auth provider still uses legacy User.
 class Usuario extends Authenticatable
 {
-    use HasRoles, Notifiable;
+    use HasFactory, HasRoles, Notifiable;
 
     protected $table = 'usuarios';
 
@@ -26,8 +26,8 @@ class Usuario extends Authenticatable
 
     protected function casts(): array
     {
-        // No hashed cast: future importers must preserve the original SHA-1
-        // until a correctly authenticated login can replace it.
+        // Importers preserve SHA-1. Only an authenticated login or an explicit
+        // administrative password change may write a modern hash.
         return ['edad' => 'integer', 'plaza_id' => 'integer'];
     }
 

@@ -27,6 +27,11 @@ final class CorePermissions
         return array_merge(...array_values(self::GROUPS));
     }
 
+    public static function labels(): array
+    {
+        return array_column(self::ROLES, 'label', 'name');
+    }
+
     public static function roleNamesFor(string $permission): array
     {
         return $permission === 'access-log.view' ? ['root', 'superadmin'] : ['root'];

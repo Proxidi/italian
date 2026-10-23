@@ -2,15 +2,14 @@
 
 namespace App\Support;
 
-use App\Models\User;
-use Illuminate\Support\Facades\DB;
+use App\Models\Usuario;
 use Illuminate\Support\Facades\Route;
 
 class AuthenticatedNavigation
 {
-    public function forUser(User $user): array
+    public function forUser(Usuario $user): array
     {
-        $user->loadMissing('roles');
+        $user->loadMissing(['roles', 'plaza']);
 
         $role = null;
         $panel = null;
@@ -29,16 +28,12 @@ class AuthenticatedNavigation
         $definition = config("authenticated-navigation.panels.{$panel}");
 
         $name = trim(implode(' ', array_filter([
-            $user->Nombre,
-            $user->Apepat,
-            $user->Apemat,
+            $user->nombre,
+            $user->apellido_paterno,
+            $user->apellido_materno,
         ], static fn ($value) => $value !== null && $value !== '')));
 
-        $plaza = $user->plaza_id === null
-            ? null
-            : DB::table('tbl_plazas')
-                ->where('id', $user->plaza_id)
-                ->value('Nombre');
+        $plaza = $user->plaza?->nombre;
 
         return [
             'role' => $role,
@@ -46,12 +41,12 @@ class AuthenticatedNavigation
             'title' => $definition['title'],
             'subtitle' => $definition['subtitle'],
             'profile' => [
-                'short_name' => filled($user->Nombre)
-                    ? (string) $user->Nombre
-                    : (string) $user->Usuario,
-                'name' => $name !== '' ? $name : (string) $user->Usuario,
+                'short_name' => filled($user->nombre)
+                    ? (string) $user->nombre
+                    : (string) $user->usuario,
+                'name' => $name !== '' ? $name : (string) $user->usuario,
                 'plaza' => $plaza,
-                'avatar' => $user->Sexo === 'H' ? 'man.png' : 'woman.png',
+                'avatar' => $user->sexo === 'H' ? 'man.png' : 'woman.png',
             ],
             'sidebar' => $this->resolveItems([
                 ...config('authenticated-navigation.common'),
@@ -61,7 +56,7 @@ class AuthenticatedNavigation
         ];
     }
 
-    private function resolveItems(array $items, User $user): array
+    private function resolveItems(array $items, Usuario $user): array
     {
         $resolved = [];
 
@@ -76,7 +71,7 @@ class AuthenticatedNavigation
         return $resolved;
     }
 
-    private function resolve(array $item, User $user): ?array
+    private function resolve(array $item, Usuario $user): ?array
     {
         if (isset($item['children'])) {
             $item['children'] = $this->resolveItems($item['children'], $user);

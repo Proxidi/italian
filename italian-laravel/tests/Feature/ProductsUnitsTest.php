@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\MeasurementUnit;
-use App\Models\User;
+use App\Models\Usuario;
 use Database\Seeders\ProductsPermissionsSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -13,10 +13,13 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\NativeCoreFixtures;
 use Tests\TestCase;
 
 class ProductsUnitsTest extends TestCase
 {
+    use NativeCoreFixtures;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -34,14 +37,7 @@ class ProductsUnitsTest extends TestCase
             $table->increments('id');
             $table->string('Nombre');
         });
-        Schema::create('tbl_usuarios', function (Blueprint $table) {
-            $table->increments('id');
-            $table->string('Nombre');
-            $table->string('Usuario');
-            $table->string('Sexo');
-            $table->integer('plaza_id');
-            $table->integer('rol_id');
-        });
+        $this->createNativeCoreSchema();
         Schema::create('tbl_unidades', function (Blueprint $table) {
             $table->increments('id');
             $table->string('Nombre', 50);
@@ -82,13 +78,9 @@ class ProductsUnitsTest extends TestCase
         parent::tearDown();
     }
 
-    protected function actor(string $role = 'root'): User
+    protected function actor(string $role = 'root'): Usuario
     {
-        $id = DB::table('tbl_usuarios')->insertGetId(['Nombre' => 'Persona sintética', 'Usuario' => 'prueba', 'Sexo' => 'H', 'plaza_id' => 1, 'rol_id' => 3]);
-        $actor = User::findOrFail($id);
-        $actor->assignRole($role);
-
-        return $actor;
+        return $this->nativeUser($role);
     }
 
     public static function deniedRoles(): array

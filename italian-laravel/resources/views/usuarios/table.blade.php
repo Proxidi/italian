@@ -30,7 +30,7 @@
         @endif
         @if ($isDirectory)
             <div class="ui-list__create">
-                <button class="ui-list__button ui-list__button--blue" type="button" data-open-user-create @cannot('create', \App\Models\User::class) disabled aria-disabled="true" @endcannot>
+                <button class="ui-list__button ui-list__button--blue" type="button" data-open-user-create @cannot('create', \App\Models\Usuario::class) disabled aria-disabled="true" @endcannot>
                     <span aria-hidden="true">✚</span> Agregar Usuario
                 </button>
             </div>
@@ -71,7 +71,7 @@
                     @if ($isDirectory)
                         <td data-copy-exclude>
                             @if(auth('web')->user()->can('users.update'))
-                                <x-ui.table-action :href="route('usuarios.edit', $record->id)" aria-label="Editar usuario {{ $record->Nombre }}" />
+                                <x-ui.table-action :href="route('usuarios.edit', $record->id)" aria-label="Editar usuario {{ $record->nombre }}" />
                             @else
                                 <x-ui.table-action disabled aria-disabled="true" aria-label="Editar usuario: sin permiso" />
                             @endif
@@ -86,7 +86,7 @@
     </x-ui.listing>
     @endfragment
     @if($isDirectory)
-        @can('create', \App\Models\User::class)
+        @can('create', \App\Models\Usuario::class)
             @include('usuarios.partials.create')
         @endcan
     @endif

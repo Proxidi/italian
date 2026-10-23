@@ -1,5 +1,5 @@
 @php($subject = $subject ?? null)
-@foreach (['nombre' => ['Nombre', 'Nombre', 'text', 25], 'apepat' => ['Apellido Paterno', 'Apepat', 'text', 25], 'apemat' => ['Apellido Materno', 'Apemat', 'text', 25], 'edad' => ['Edad', 'Edad', 'number', null], 'email' => ['Email', 'Email', 'email', 75]] as $name => [$label, $attribute, $type, $max])
+@foreach (['nombre' => ['Nombre', 'nombre', 'text', 25], 'apellido_paterno' => ['Apellido Paterno', 'apellido_paterno', 'text', 25], 'apellido_materno' => ['Apellido Materno', 'apellido_materno', 'text', 25], 'edad' => ['Edad', 'edad', 'number', null], 'email' => ['Email', 'email', 'email', 75]] as $name => [$label, $attribute, $type, $max])
     <div class="users-form__field">
         <label for="{{ $prefix }}-{{ $name }}">{{ $label }}:</label>
         <input class="ui-list__input" id="{{ $prefix }}-{{ $name }}" name="{{ $name }}" type="{{ $type }}" value="{{ old($name, $subject?->{$attribute}) }}" @if($max) maxlength="{{ $max }}" @endif @if($type === 'number') min="0" max="127" @endif required @error($name) aria-invalid="true" aria-describedby="{{ $prefix }}-{{ $name }}-error" @enderror>
@@ -16,12 +16,13 @@
         </div>
     @endif
 @endforeach
-@foreach (['plaza_id' => ['Plaza', $plazas], 'rol_id' => ['Rol', $roles]] as $name => [$label, $options])
+@foreach (['plaza_id' => ['Plaza', $plazas], 'role_id' => ['Rol', $roles]] as $name => [$label, $options])
     <div class="users-form__field">
         <label for="{{ $prefix }}-{{ $name }}">{{ $label }}:</label>
         <select class="ui-list__input" id="{{ $prefix }}-{{ $name }}" name="{{ $name }}" required>
+            @if($name === 'role_id' && empty($selectedRoleId))<option value="">Selecciona un rol</option>@endif
             @foreach($options as $option)
-                <option value="{{ $option->id }}" @selected((string) old($name, $subject?->{$name}) === (string) $option->id)>{{ $option->Nombre }}</option>
+                <option value="{{ $option->id }}" @selected((string) old($name, $name === 'role_id' ? ($selectedRoleId ?? null) : $subject?->{$name}) === (string) $option->id)>{{ $option->nombre }}</option>
             @endforeach
         </select>
         @error($name)<span class="users-form__error">{{ $message }}</span>@enderror
@@ -29,7 +30,7 @@
 @endforeach
 <div class="users-form__field">
     <label for="{{ $prefix }}-usuario">User Name:</label>
-    <input class="ui-list__input" id="{{ $prefix }}-usuario" name="usuario" value="{{ old('usuario', $subject?->Usuario) }}" maxlength="50" autocomplete="off" required>
+    <input class="ui-list__input" id="{{ $prefix }}-usuario" name="usuario" value="{{ old('usuario', $subject?->usuario) }}" maxlength="50" autocomplete="off" required>
     @error('usuario')<span class="users-form__error">{{ $message }}</span>@enderror
 </div>
 <div class="users-form__field">

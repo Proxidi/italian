@@ -53,11 +53,13 @@ datos iniciales/configuración. El destino es abandonar `tbl_*` en la operación
 normal y autenticar contra una nueva tabla de usuarios con hashes modernos y
 Spatie. La convivencia con SHA-1 y tablas legacy es temporal.
 
-**Estado actualizado:** las etapas 0/1 preparan conexiones, migrations y modelos
-de `plazas`, `usuarios` y `bitacora_accesos`; la etapa 2 implementa importadores
-y bootstrap Spatie seguros (detalle al final), probados con datos sintéticos.
-Siguen pendientes la importación real supervisada, esquemas de otros módulos,
-transición de credenciales y retiro de compatibilidad. No renombrar tablas existentes ni ejecutar migrations o
+**Estado actualizado:** las etapas 0/1 preparan conexiones, migrations y modelos;
+la etapa 2 implementa importadores/bootstrap; la etapa 3 activa Login, Usuarios,
+bitácora e Inicio sobre `usuarios`, `plazas`, `bitacora_accesos` y Spatie, con
+rehash progresivo. El responsable reporta importación local de 7 plazas, 43 usuarios
+y 63 628 accesos, sin conflictos; nuestras comprobaciones usan datos sintéticos.
+Siguen pendientes los esquemas de otros módulos y la integración de avisos reales.
+No renombrar tablas existentes ni ejecutar migrations o
 importadores sin alcance y destino autorizados.
 
 El código Laravel actual usa el esquema legacy, pero eso no demuestra que ambos
@@ -2288,3 +2290,260 @@ siguen usando el modelo legacy y no quedan habilitadas por importar el núcleo.
 La consulta de Corte a `tbl_reporte_ventas` y los avisos reales siguen siendo
 requisitos por resolver; los modales mock no los sustituyen. Configurar y Productos
 esperan sus etapas de persistencia. No se inició Pedidos.
+
+## BD nueva, etapa 3: núcleo funcional nativo (2026-10-23)
+
+### Estado y alcance
+
+Se activan Login/logout, recuperación de identidad en sesiones posteriores,
+Usuarios (lectura/escritura/exportaciones), bitácora e Inicio/shell sobre el núcleo
+nuevo. El responsable reporta haber importado **7 plazas, 43 usuarios y 63 628
+accesos**, con cero rechazos/conflictos/pendientes e integridad correcta. No se
+recontaron ni modificaron esos datos desde este entorno; las pruebas usan fixtures.
+
+No hay nuevas migrations en esta etapa. Se conservan los IDs y el esquema de
+etapas 0/1/2. No se ejecutan importadores ni bootstrap al autenticar o navegar.
+`legacy` queda exclusivamente para comandos de migración explícitos. Configurar
+y Productos no se adaptan todavía a la BD nueva, y no son una dependencia para
+iniciar sesión, consultar el directorio o cargar Inicio.
+
+### Identidad, guard y contraseñas
+
+`config/auth.php` fija `App\Models\Usuario` como proveedor Eloquent del guard
+de sesión `web`. La identidad se busca por `usuarios.usuario`; el formulario
+conserva su input HTTP `username` y su diseño actual. El password es
+`usuarios.password`. `Usuario` conserva `Authenticatable`, `HasRoles`, relaciones
+`plaza()`/`accesos()`, atributos sensibles ocultos y alias polimórfico `usuario`.
+No hay un segundo modelo autenticable operativo ni fallback a tablas antiguas.
+
+Se retiran `app/Models/User.php` y `LegacyUserRoleSynchronizer.php`; la factory
+scaffold `UserFactory.php` se sustituye por `UsuarioFactory.php` con columnas
+nativas, plaza real del fixture y contraseña moderna. `UserPolicy` se vincula
+explícitamente al nuevo modelo, sin depender de una inferencia por nombre.
+
+`PasswordCompatibility` es el único lector de SHA-1 del Login. Reconoce exactamente
+40 dígitos hexadecimales, compara con `hash_equals()` y no transforma el hash
+durante importaciones ni usa un cast `hashed`. Para hashes modernos reconocidos
+(bcrypt, Argon2i, Argon2id) utiliza el driver Laravel correspondiente, con la
+verificación de algoritmo habilitada. Los formatos desconocidos se rechazan.
+No se utiliza `Hash` ni `sha1_id` legacy como credencial.
+
+El hasher predeterminado ahora es **Argon2id**, configurado en `config/hashing.php`:
+64 MiB, dos iteraciones y un hilo; opciones `HASH_DRIVER` y
+`ARGON_MEMORY/TIME/THREADS` conservan las convenciones técnicas. Se verificó
+soporte en PHP **8.5.11** del runtime de pruebas; un hash con esos parámetros
+tomó aproximadamente **336 ms**, medición local orientativa, no de producción.
+Se eligió ese coste para equilibrar memoria y respuesta al Login. Cada instalación
+debe confirmar `password_algos()` y su configuración efectiva; no se introduce
+un fallback silencioso a SHA-1 ni se desactiva `verify` globalmente.
+
+`AuthenticateUsuario` verifica la contraseña y calcula el hash moderno con el
+hasher configurado cuando `needsRehash()` lo indica. Dentro de una transacción
+vuelve a leer al usuario con `lockForUpdate()`, comprueba que el password siga
+siendo idéntico al observado y exige plaza y un único rol web reconocido. Si una
+contraseña cambió concurrentemente se rechaza el intento; no se sobrescribe con
+un rehash de la credencial anterior. SHA-1 inválido, contraseña incorrecta, cuenta
+ausente y referencias/roles inválidos no cambian el password ni registran éxito.
+
+Tras esas comprobaciones se actualiza únicamente `usuarios`, se establece la
+sesión con el guard nativo, se regenera la sesión y se inserta un único acceso.
+Hash y bitácora comparten transacción. Ante fallo obligatorio del flujo se
+revierte la transacción y se limpia guard/sesión; errores de BD que puedan incluir
+bindings sensibles se sustituyen por un mensaje seguro 503, sin registrar el
+SQL/hash original. Se conserva `throttle:5,1`, mensajes de validación, CSRF,
+feedback/loading/ojito y funcionamiento HTTP sin JavaScript. Logout sigue siendo
+POST con CSRF, invalida la sesión y regenera el token.
+
+### Spatie y Usuarios
+
+Los cinco roles y sus capacidades conservan la matriz y administración vigente.
+El Login **solo lee** las asignaciones importadas; no consulta `rol_id`, no crea
+roles, no llama a `syncRoles()` ni ejecuta seeders. No existe bypass para
+superadmin. Las concesiones/revocaciones posteriores permanecen efectivas en
+autorización y navegación; el marcador del bootstrap no se modifica.
+
+El formulario administrativo utiliza `role_id` como input técnico de Spatie,
+sin añadir esa columna ni `rol_id` a `usuarios`. Sus opciones provienen de roles
+web reconocidos y plazas Eloquent, con etiquetas de negocio de `CorePermissions`.
+Usuario y asignación única se guardan en transacción, con bloqueo del usuario
+existente y comprobación de referencias. La contraseña vacía conserva el hash
+actual del registro bloqueado; una contraseña nueva o un alta usa el hasher
+moderno. Se conservan límites funcionales, edad 0–127, sexo obligatorio H/M solo
+en alta, unicidad y mensajes actuales. Los nombres de inputs de apellidos pasan
+a `apellido_paterno`/`apellido_materno`. Los campos legacy se prohíben explícitamente.
+
+Las colisiones concurrentes de email/usuario se reportan como validación sin
+escrituras parciales. Los fallos de BD de escritura se presentan sin exponer
+bindings de contraseña. Los registros importados conservan fechas históricas
+NULL; altas y modificaciones nuevas utilizan timestamps reales de Eloquent.
+La eliminación sigue sin ruta ni columna de acción; no hay soft deletes.
+
+El directorio conserva cinco columnas, búsqueda AJAX con respaldo HTTP,
+ordenamiento/paginación y Excel/PDF/CSV/Copy/impresión con el alcance filtrado.
+También muestra cuentas sin rol para que el administrador pueda corregirlas:
+ya no se ocultan mediante el join interno a roles legacy. Los cambios Blade son
+únicamente conexiones a campos/modelos nuevos; no se rediseñan estilos, assets,
+tarjetas, shell ni animaciones.
+
+### Bitácora, Inicio y zona horaria
+
+Los accesos nuevos se insertan en `bitacora_accesos` con la plaza del usuario
+bloqueado en ese momento. Cambiar posteriormente su plaza no altera históricos.
+Fecha y hora se escriben como DATE/TIME literales a partir de `now()` de Laravel.
+La configuración efectiva revisada conserva **UTC** (`config/app.php`); no se
+cambia silenciosamente a la zona del navegador ni se convierten datos importados.
+CodeIgniter usaba `date()` de PHP, sin una zona explícita en el recorrido inspeccionado;
+su zona de servidor real no quedó acreditada. Confirmar la zona operativa local
+antes de cambiar esta decisión en otra tarea; esta etapa conserva el comportamiento
+temporal ya configurado en Laravel.
+
+El listado/exportaciones consulta accesos, usuarios, plazas y los pivots Spatie.
+La plaza es histórica; el nombre y rol mostrados son actuales, como en el recorrido
+anterior. El rol usa la etiqueta de negocio. Una subconsulta devuelve una sola
+fila por usuario para evitar multiplicar accesos si hay roles inconsistentes:
+sin rol o con varios, muestra `Sin rol único`, también buscable/ordenable. No se
+inventa un rol histórico. Se mantienen fecha exacta, filtros, paginación y las
+exportaciones. Leer la bitácora o recuperar una sesión no genera nuevos accesos.
+
+Inicio y `AuthenticatedNavigation` usan `Usuario->plaza` y Spatie. Se conservan
+los paneles superadmin/root/manager/socio (admin y submanager comparten panel),
+las capacidades efectivas, cards, header, sidebar, dropdown, bienvenida y mock.
+No se ejecutan consultas de Configurar/Productos/Ventas para construir el shell.
+El scaffold de registro, recuperación, verificación y perfil continúa sin rutas;
+`routes/auth.php` queda como aviso del scaffold deshabilitado. Sus controladores
+no constituyen funcionalidades migradas ni autorizan su activación.
+
+### Corte y avisos reales: contrato pendiente conservado
+
+El recorrido comprobado es `Seguridad::login()` →
+`Mdl_ventas::consultarFechaVenta(fecha, plaza_id)` en CodeIgniter. Fecha es el día
+de hace **dos días**, llamado `hoy` históricamente. La consulta comprueba si existe
+alguna fila de `tbl_reporte_ventas` con `Fecha` y `plaza_id`, sin otros filtros.
+Si existe, `msj` es vacío; si falta, es
+`Archivo de Corte Solicitado. Fecha:  <fecha>`. Ambos se guardaban en sesión junto
+con `modal=1`. Laravel preparaba el mismo estado antes de esta etapa.
+
+En las vistas y consumidores inspeccionados no se encontró uso operativo actual
+de `msj`/`hoy` en Laravel. La bienvenida CodeIgniter leía `modal`/nombre; el Inicio
+renovado usa su propio flujo visual y el mock no consume datos reales de Corte.
+Por autorización de esta etapa la consulta sale del Login; se eliminan del estado
+de sesión `msj`/`hoy` anteriores y no se fabrica un resultado de ausencia de Corte.
+Se conserva la intención de bienvenida, sin convertir el mock en un aviso real.
+
+La integración futura debe usar la tabla migrada de reportes/Ventas y un cálculo
+de avisos separado de la verificación de credenciales, con fecha/plaza/existencia
+equivalentes y presentación real por definir. Las reglas de notificaciones y
+ventanas de Configurar siguen siendo requisitos propios de sus siguientes etapas.
+Este contrato no se marca obsoleto ni se consulta mediante `legacy` para permitir
+el acceso al núcleo nuevo.
+
+### Referencias residuales y límites
+
+| Referencia | Clasificación tras esta etapa |
+| --- | --- |
+| `tbl_usuarios`, `tbl_roles`, `tbl_bitacora_accesos` en servicios de importación | Necesarias para leer y mapear la fuente; fuera del núcleo operativo. |
+| `rol_id` en `CoreImporter` / catálogo de IDs 1–5 | Mapeo histórico de importación; no autorización durante Login. |
+| `rol_id`, `Hash`, `sha1_id`, `Password` en validación/formulario | Nombres prohibidos y presentación de sus errores; no columnas consultadas ni credenciales aceptadas. |
+| `Hash` como facade Laravel | Hashing moderno; no es el campo `Hash` legacy. |
+| `tbl_plazas` en `CostOfSale`, su controlador y request | Dependencia de Productos todavía pendiente, conservada fuera del núcleo. |
+| `tbl_rango_archivos`, `tbl_notificaciones`, tablas de Productos/Fórmulas/Insumos | Persistencia aún no adaptada; no se carga desde Login/Inicio. |
+| Nombres antiguos en pruebas/import fixtures/documentación | Referencia histórica o fuente sintética; el fixture de autenticación/Usuarios utiliza tablas nuevas. |
+| Destinos `legacy` de navegación | Metadatos de rutas funcionales históricas, sin conexión ni consultas a la fuente. |
+
+Los paneles de navegación de Configurar/Productos pueden mostrarse por permisos;
+sus subpantallas con datos todavía esperan las tablas nuevas. No quedan listas
+contra `italian_laravel` vacío de esas tablas por importar solo el núcleo. No se
+copian tablas `tbl_*`, se conectan controladores al origen ni se crean datos falsos
+para hacerlas funcionar. Tampoco se migran Inventario, Ventas, Remesas o Pedidos.
+
+### Despliegue y comprobaciones locales
+
+Conservar `.env` y comprobar destino `italian_laravel`, importación terminada y
+permisos existentes. No repetir bootstrap/seeders/importaciones por activar esta
+etapa. Los comandos de comparación legacy pueden señalar conflictos después del
+rehash o de cambios administrativos: protegen esos cambios, no son un healthcheck
+del núcleo operativo. Si se requieren importaciones incrementales, revisar primero
+sus conflictos; nunca sobrescribir passwords o roles modernizados.
+
+Desde `italian-laravel/` tras sincronizar:
+
+```sh
+./vendor/bin/sail artisan config:clear
+./vendor/bin/sail artisan view:clear
+./vendor/bin/sail php -r 'var_export(password_algos());'
+./vendor/bin/sail artisan tinker --execute='dump(config("auth.providers.users.model"), config("hashing.driver"), config("app.timezone"), DB::connection()->getDatabaseName(), App\Models\Plaza::count(), App\Models\Usuario::count(), App\Models\Acceso::count());'
+npm run build
+```
+
+Comprobar `Usuario`, `argon2id`, `UTC` y el destino esperado; variables externas
+como `HASH_DRIVER` pueden cambiar el hasher configurado. Confirmar soporte y costes
+de Argon2id en el runtime local, no solo PHP anfitrión. Si se utiliza configuración
+cacheada, regenerarla después de esas comprobaciones. No modificar `APP_KEY` para
+forzar esta transición ni recrear sesiones/tablas. Los IDs de sesión siguen
+resolviendo usuarios mediante el proveedor Eloquent nuevo; para comprobar el
+rehash, cerrar la sesión anterior e iniciar una nueva con una cuenta importada.
+
+Probar contraseña incorrecta (hash intacto, sin acceso nuevo), Login válido
+(hash moderno, un acceso), Login siguiente, altas/ediciones con permisos y logout.
+Las contraseñas migradas dejan de compararse como SHA-1. Comprobar interfaz en
+escritorio/móvil y confirmar la zona horaria operativa antes de decidir un cambio.
+No hay migrations adicionales que ejecutar por la etapa 3.
+
+### Validación aislada
+
+`CoreFunctionalTestCase` configura SQLite `:memory:` o, con opt-in
+`CORE_FUNCTIONAL_MYSQL=1`, únicamente `italian_stage03_tests`. Las variables
+`CORE_FUNCTIONAL_MYSQL_HOST/PORT/USERNAME/PASSWORD` son independientes; no se
+heredan `DB_URL`, nombre de BD ni credenciales de despliegue. La base descartable
+debe crearse expresamente antes de las pruebas. Se verifica el nombre efectivo
+antes de ejecutar migrations y rollback solo en ella. Las asociaciones/permisos
+son fixtures sintéticos; no se invoca el bootstrap inicial ni se importan datos reales.
+
+La conexión `legacy` se configura deliberadamente inaccesible y las pruebas del
+nuevo núcleo rechazan cualquier consulta que use esa conexión o tablas `tbl_*`.
+Cubre los cinco roles, SHA-1 válido/inválido, bcrypt/Argon, rehash, concurrencia,
+transacción/audit fallido, CSRF/throttle/logout, proveedor posterior en sesión,
+permisos revocados, CRUD nativo, unicidad con collation real, AJAX/respaldo HTTP,
+exportaciones, fábrica, FKs, fechas/plaza histórica y roles inconsistentes.
+
+Ejemplo, preparando únicamente la BD descartable y pasando sus variables:
+
+```sh
+./vendor/bin/sail exec -e CORE_FUNCTIONAL_MYSQL=1 -e CORE_FUNCTIONAL_MYSQL_HOST=mysql laravel.test php -d memory_limit=512M vendor/bin/phpunit tests/Feature/Auth/AuthenticationTest.php tests/Feature/NativeCoreTest.php --do-not-cache-result
+./vendor/bin/sail exec laravel.test php -d memory_limit=512M vendor/bin/phpunit tests/Feature/Auth tests/Feature/ProfileTest.php tests/Feature/CoreSchemaTest.php tests/Feature/NativeCoreTest.php tests/Feature/UsersReadTest.php --do-not-cache-result
+```
+
+La opción de memoria se limita al proceso de tests que combina exportaciones
+Excel/PDF; no cambia infraestructura o límites PHP del despliegue. La combinación
+de suites de exportación superó el límite CLI inicial de 128 MiB; se repitió con
+512 MiB y pasó. El nuevo núcleo se probó con MySQL **8.4.13** y PHP **8.5.11**
+descartables, sin acceso a `italian`/`italian_laravel` reales.
+
+Resultados de esta intervención, con algunos alcances de regresión solapados:
+
+- Autenticación + núcleo funcional en MySQL: **29 pruebas / 4483 aserciones**.
+- Autenticación, scaffold deshabilitado y esquema en SQLite: **36 / 931**.
+- Núcleo funcional + módulo Usuarios completo en SQLite: **52 / 2598**.
+- Regresión de Usuarios y módulos que comparten usuario/shell: **205 / 1604**.
+  Configurar/Productos usan fixtures de sus tablas pendientes en esas pruebas;
+  no acredita que ya funcionen contra la nueva BD real sin esas tablas.
+- Regresión de importadores/bootstrap con el proveedor nuevo en MySQL: **38 / 648**.
+- Pint `--test`: **42 archivos**; `git diff --check` sin errores.
+- `npm run build` pasó. Los artefactos compilados se usaron fuera del árbol de
+  trabajo para la comprobación visual; no se versionan cambios de build ajenos
+  al backend ni se modifican fuentes CSS/JS o imágenes.
+
+Chromium contra PHP/Laravel real con BD SQLite descartable, sesiones y CSRF reales:
+**1366 y 390 px**. Verificados Login incorrecto/correcto, recuperación del botón
+tras error, loading, mostrar/ocultar contraseña, bienvenida → mock con retardo,
+sidebar, menú y logout efectivo, alta/edición nativas, AJAX en Usuarios/bitácora,
+Copy al portapapeles y ausencia de overflow horizontal. También Login, recuperación
+de identidad de sesión, búsqueda HTTP y logout sin JavaScript. Se comprobó el
+flujo con `prefers-reduced-motion`; no se alteraron las animaciones existentes.
+La previsualización usa datos/contraseñas sintéticos, sin conectar a la fuente.
+Los contenedores y la red descartable se retiran al finalizar.
+
+Pendiente: comprobar autenticación con los datos ya importados en la instalación
+del responsable y continuar luego con persistencia de Configurar/Productos y los
+avisos reales, en intervenciones independientes. No se publican commits ni merges
+en esta intervención.

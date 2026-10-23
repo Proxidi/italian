@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Actions\Users\SaveUser;
 use App\Exports\UsersReadSpreadsheet;
 use App\Http\Requests\Users\AccessLogRequest;
 use App\Http\Requests\Users\DirectoryRequest;
-use App\Models\User;
+use App\Models\Acceso;
+use App\Models\Usuario;
 use App\Support\AuthenticatedNavigation;
+use App\Support\CorePermissions;
 use App\Support\ListingResponse;
+use App\Support\UserCatalogs;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Query\Builder;
@@ -22,57 +24,57 @@ class UsersReadController extends Controller
 {
     private const DIRECTORY_COLUMNS = [
         'name' => [
-            'field' => 'Nombre',
+            'field' => 'nombre',
             'label' => 'Nombre',
-            'sql' => 'tbl_usuarios.Nombre',
+            'sql' => 'usuarios.nombre',
         ],
         'age' => [
-            'field' => 'Edad',
+            'field' => 'edad',
             'label' => 'Edad',
-            'sql' => 'tbl_usuarios.Edad',
+            'sql' => 'usuarios.edad',
         ],
         'email' => [
-            'field' => 'Email',
+            'field' => 'email',
             'label' => 'Email',
-            'sql' => 'tbl_usuarios.Email',
+            'sql' => 'usuarios.email',
         ],
         'username' => [
-            'field' => 'Usuario',
+            'field' => 'usuario',
             'label' => 'Usuario',
-            'sql' => 'tbl_usuarios.Usuario',
+            'sql' => 'usuarios.usuario',
         ],
         'plaza' => [
-            'field' => 'Plaza',
+            'field' => 'plaza',
             'label' => 'Plaza',
-            'sql' => 'p.Nombre',
+            'sql' => 'p.nombre',
         ],
     ];
 
     private const ACCESS_COLUMNS = [
         'date' => [
-            'field' => 'Fecha',
+            'field' => 'fecha',
             'label' => 'Fecha',
-            'sql' => 'ba.Fecha',
+            'sql' => 'ba.fecha',
         ],
         'time' => [
-            'field' => 'Hora',
+            'field' => 'hora',
             'label' => 'Hora',
-            'sql' => 'ba.Hora',
+            'sql' => 'ba.hora',
         ],
         'plaza' => [
-            'field' => 'Plaza',
+            'field' => 'plaza',
             'label' => 'Plaza',
-            'sql' => 'p.Nombre',
+            'sql' => 'p.nombre',
         ],
         'username' => [
-            'field' => 'Usuario',
+            'field' => 'usuario',
             'label' => 'Usuario',
-            'sql' => 'u.Nombre',
+            'sql' => 'u.nombre',
         ],
         'role' => [
-            'field' => 'Rol',
+            'field' => 'rol',
             'label' => 'Rol',
-            'sql' => 'r.Nombre',
+            'sql' => "COALESCE(actual.rol, 'Sin rol único')",
         ],
     ];
 
@@ -90,10 +92,9 @@ class UsersReadController extends Controller
             'filters' => $filters,
             'indexRoute' => 'usuarios.index',
             'exportRoute' => 'usuarios.export',
-            'roles' => DB::table('tbl_roles')->whereIn('id', array_keys(SaveUser::ROLES))->get(['id', 'Nombre']),
-            'plazas' => DB::table('tbl_plazas')->get(['id', 'Nombre']),
+            ...UserCatalogs::forForm(),
             'records' => $this->directoryQuery($filters)
-                ->addSelect('tbl_usuarios.id')
+                ->addSelect('usuarios.id')
                 ->paginate(100)
                 ->appends($filters),
         ]);
@@ -149,79 +150,40 @@ class UsersReadController extends Controller
 
     private function directoryQuery(array $filters): Builder
     {
-        /*
-         * Conserva los joins internos del legacy. El rol no se muestra,
-         * pero un usuario sin plaza o rol legacy relacionado tampoco aparece.
-         *
-         * Selecciona los cinco datos exportables. El listado añade el ID para editar.
-         */
-        $query = User::query()
-            ->join('tbl_roles as r', 'tbl_usuarios.rol_id', '=', 'r.id')
-            ->join('tbl_plazas as p', 'tbl_usuarios.plaza_id', '=', 'p.id')
-            ->select([
-                'tbl_usuarios.Nombre',
-                'tbl_usuarios.Edad',
-                'tbl_usuarios.Email',
-                'tbl_usuarios.Usuario',
-                'p.Nombre as Plaza',
-            ])
-            ->toBase();
+        // Administrative listing includes accounts without a role, so their
+        // assignment can be corrected instead of silently hiding the account.
+        $query = Usuario::query()->leftJoin('plazas as p', 'usuarios.plaza_id', '=', 'p.id')
+            ->select(['usuarios.nombre', 'usuarios.edad', 'usuarios.email', 'usuarios.usuario', 'p.nombre as plaza'])->toBase();
+        $this->applySearchAndSort($query, $filters, self::DIRECTORY_COLUMNS);
 
-        $this->applySearchAndSort(
-            $query,
-            $filters,
-            self::DIRECTORY_COLUMNS,
-        );
-
-        /*
-         * El legacy ordena por u.id ASC. Si el usuario solicita una columna,
-         * el ID conserva un desempate estable sin mostrarse en la consulta.
-         */
-        return $query->orderBy(
-            'tbl_usuarios.id',
-            $filters['sort'] === 'default'
-                ? $filters['direction']
-                : 'asc',
-        );
+        return $query->orderBy('usuarios.id', $filters['sort'] === 'default' ? $filters['direction'] : 'asc');
     }
 
     private function accessQuery(array $filters): Builder
     {
-        $query = DB::table('tbl_bitacora_accesos as ba')
-            ->join('tbl_usuarios as u', 'ba.usuario_id', '=', 'u.id')
-            ->join('tbl_plazas as p', 'ba.plaza_id', '=', 'p.id')
-            ->join('tbl_roles as r', 'u.rol_id', '=', 'r.id')
-            ->select([
-                'ba.Fecha',
-                'ba.Hora',
-                'p.Nombre as Plaza',
-                'u.Nombre as Usuario',
-                'r.Nombre as Rol',
-            ])
-            /*
-             * Conserva la semántica legacy: fecha exacta, sin rango,
-             * y plaza tomada de la fila de acceso.
-             */
-            ->where('ba.Fecha', $filters['date']);
+        $labels = CorePermissions::labels();
+        $case = 'CASE r.name '.implode(' ', array_fill(0, count($labels), 'WHEN ? THEN ?')).' ELSE r.name END';
+        $bindings = [];
+        foreach ($labels as $name => $label) {
+            array_push($bindings, $name, $label);
+        }
+        // One row per user even if malformed role assignments exist. No
+        // historical role is invented and an inconsistent account is visible.
+        $roles = DB::table('model_has_roles as m')->join('roles as r', 'r.id', '=', 'm.role_id')
+            ->where('m.model_type', 'usuario')->where('r.guard_name', 'web')->select('m.model_id')
+            ->selectRaw('CASE WHEN COUNT(*) = 1 THEN MAX('.$case.') ELSE ? END AS rol', [...$bindings, 'Sin rol único'])
+            ->groupBy('m.model_id');
+        $query = Acceso::query()->from('bitacora_accesos as ba')
+            ->join('usuarios as u', 'ba.usuario_id', '=', 'u.id')
+            ->join('plazas as p', 'ba.plaza_id', '=', 'p.id')
+            ->leftJoinSub($roles, 'actual', 'actual.model_id', '=', 'u.id')
+            ->select(['ba.fecha', 'ba.hora', 'p.nombre as plaza', 'u.nombre as usuario'])
+            ->selectRaw("COALESCE(actual.rol, 'Sin rol único') AS rol")
+            ->where('ba.fecha', $filters['date'])->toBase();
+        $this->applySearchAndSort($query, $filters, self::ACCESS_COLUMNS);
+        $direction = $filters['sort'] === 'default' ? $filters['direction'] : 'desc';
 
-        $this->applySearchAndSort(
-            $query,
-            $filters,
-            self::ACCESS_COLUMNS,
-        );
-
-        $direction = $filters['sort'] === 'default'
-            ? $filters['direction']
-            : 'desc';
-
-        /*
-         * Legacy: Fecha DESC, Hora DESC.
-         * El ID es un desempate para paginación estable.
-         */
-        return $query
-            ->orderBy('ba.Fecha', $direction)
-            ->orderBy('ba.Hora', $direction)
-            ->orderBy('ba.id', 'desc');
+        return $query->orderBy('ba.fecha', $direction)->orderBy('ba.hora', $direction)->orderBy('ba.id', 'desc');
     }
 
     private function applySearchAndSort(
@@ -258,10 +220,7 @@ class UsersReadController extends Controller
         }
 
         if ($filters['sort'] !== 'default') {
-            $query->orderBy(
-                $columns[$filters['sort']]['sql'],
-                $filters['direction'],
-            );
+            $query->orderByRaw($columns[$filters['sort']]['sql'].' '.$filters['direction']);
         }
     }
 

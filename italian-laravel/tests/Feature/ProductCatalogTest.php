@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\ProductIngredient;
-use App\Models\User;
+use App\Models\Usuario;
 use Database\Seeders\ProductCatalogPermissionsSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -15,10 +15,13 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\NativeCoreFixtures;
 use Tests\TestCase;
 
 class ProductCatalogTest extends TestCase
 {
+    use NativeCoreFixtures;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -73,14 +76,7 @@ class ProductCatalogTest extends TestCase
             $table->float('Unidad');
             $table->float('Total');
         });
-        Schema::create('tbl_usuarios', function (Blueprint $table) {
-            $table->increments('id');
-            $table->string('Nombre');
-            $table->string('Usuario');
-            $table->string('Sexo');
-            $table->integer('plaza_id');
-            $table->integer('rol_id');
-        });
+        $this->createNativeCoreSchema();
         foreach (['roles', 'permissions'] as $table) {
             Schema::create($table, function (Blueprint $table) {
                 $table->bigIncrements('id');
@@ -117,13 +113,9 @@ class ProductCatalogTest extends TestCase
         parent::tearDown();
     }
 
-    protected function actor(string $role = 'root'): User
+    protected function actor(string $role = 'root'): Usuario
     {
-        $id = DB::table('tbl_usuarios')->insertGetId(['Nombre' => 'Gerente de prueba', 'Usuario' => 'prueba', 'Sexo' => 'H', 'plaza_id' => 1, 'rol_id' => 3]);
-        $actor = User::findOrFail($id);
-        $actor->assignRole($role);
-
-        return $actor;
+        return $this->nativeUser($role);
     }
 
     protected function product(array $overrides = []): Product

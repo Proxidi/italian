@@ -3,19 +3,18 @@
 namespace Tests\Feature;
 
 use App\Actions\Users\SaveUser;
-use App\Models\User;
+use App\Models\Usuario;
 use Barryvdh\DomPDF\PDF;
 use Carbon\Carbon;
 use Database\Seeders\UsersReadPermissionsSeeder;
 use Database\Seeders\UsersWritePermissionsSeeder;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\MessageBag;
 use Illuminate\Support\ViewErrorBag;
+use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Spatie\Permission\Exceptions\RoleDoesNotExist;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -43,6 +42,8 @@ class UsersReadTest extends TestCase
                 'foreign_key_constraints' => true,
             ],
 
+            'hashing.driver' => 'argon2id',
+            'hashing.argon.memory' => 1024, 'hashing.argon.time' => 1,
             'cache.default' => 'array',
             'permission.cache.store' => 'array',
             'session.driver' => 'array',
@@ -61,16 +62,16 @@ class UsersReadTest extends TestCase
 
         $this->createSchema();
 
-        DB::table('tbl_plazas')->insert([
+        DB::table('plazas')->insert([
             [
                 'id' => 1,
-                'Nombre' => 'Plaza actual',
-                'Acronimo' => 'ACT',
+                'nombre' => 'Plaza actual',
+                'acronimo' => 'ACT',
             ],
             [
                 'id' => 2,
-                'Nombre' => 'Plaza del acceso',
-                'Acronimo' => 'ACC',
+                'nombre' => 'Plaza del acceso',
+                'acronimo' => 'ACC',
             ],
         ]);
 
@@ -83,11 +84,6 @@ class UsersReadTest extends TestCase
         ];
 
         foreach ($roles as $name => $role) {
-            DB::table('tbl_roles')->insert([
-                'id' => $role['id'],
-                'Nombre' => $role['label'],
-            ]);
-
             Role::findOrCreate($name, 'web');
         }
 
@@ -167,16 +163,16 @@ class UsersReadTest extends TestCase
         $this->assertSame(100, $records->perPage());
 
         $this->assertSame(
-            ['Nombre', 'Edad', 'Email', 'Usuario', 'Plaza', 'id'],
+            ['nombre', 'edad', 'email', 'usuario', 'plaza', 'id'],
             array_keys((array) $records->first()),
         );
 
         $response
-            ->assertSee($other->Nombre)
+            ->assertSee($other->nombre)
             ->assertSee('Plaza del acceso')
             ->assertSee('Agregar Usuario')
             ->assertSee('Editar')
-            ->assertSee('Eliminar')
+            ->assertDontSee('>Eliminar<', false)
             ->assertSee('disabled', false)
             ->assertDontSee('HASH_NO_PUBLICAR')
             ->assertDontSee('SHA1_ID_NO_PUBLICAR');
@@ -205,9 +201,7 @@ class UsersReadTest extends TestCase
          * El legacy resuelve el rol durante la consulta de la bitácora,
          * usando el rol actual del usuario, no un snapshot histórico.
          */
-        DB::table('tbl_usuarios')
-            ->where('id', $subject->id)
-            ->update(['rol_id' => 5]);
+        $subject->syncRoles(['socio']);
 
         $response = $this->actingAs($root, 'web')
             ->get(route('usuarios.accesos', [
@@ -219,10 +213,10 @@ class UsersReadTest extends TestCase
 
         $this->assertSame(1, $records->total());
         $this->assertSame(200, $records->perPage());
-        $this->assertSame('2026-10-10', $records->first()->Fecha);
-        $this->assertSame('Plaza del acceso', $records->first()->Plaza);
-        $this->assertSame('Socio', $records->first()->Rol);
-        $this->assertSame($subject->Nombre, $records->first()->Usuario);
+        $this->assertSame('2026-10-10', $records->first()->fecha);
+        $this->assertSame('Plaza del acceso', $records->first()->plaza);
+        $this->assertSame('Socio', $records->first()->rol);
+        $this->assertSame($subject->nombre, $records->first()->usuario);
     }
 
     public function test_reset_returns_to_today_and_default_order_is_newest_first(): void
@@ -262,7 +256,7 @@ class UsersReadTest extends TestCase
         $records = $response->viewData('records');
 
         $this->assertSame(2, $records->total());
-        $this->assertSame('10:00:00', $records->first()->Hora);
+        $this->assertSame('10:00:00', $records->first()->hora);
 
         $response->assertSee(
             'href="'.route('usuarios.accesos').'"',
@@ -282,26 +276,26 @@ class UsersReadTest extends TestCase
         for ($number = 1; $number <= 100; $number++) {
             $users[] = [
                 ...$base,
-                'Nombre' => 'Consulta '.$number,
-                'Email' => 'consulta'.$number.'@example.test',
-                'Usuario' => 'consulta'.$number,
+                'nombre' => 'Consulta '.$number,
+                'email' => 'consulta'.$number.'@example.test',
+                'usuario' => 'consulta'.$number,
             ];
         }
 
-        DB::table('tbl_usuarios')->insert($users);
+        DB::table('usuarios')->insert($users);
 
         $accesses = [];
 
         for ($number = 1; $number <= 201; $number++) {
             $accesses[] = [
-                'Fecha' => '2026-10-10',
-                'Hora' => '10:00:00',
+                'fecha' => '2026-10-10',
+                'hora' => '10:00:00',
                 'usuario_id' => $root->id,
                 'plaza_id' => 1,
             ];
         }
 
-        DB::table('tbl_bitacora_accesos')->insert($accesses);
+        DB::table('bitacora_accesos')->insert($accesses);
 
         $this->actingAs($root, 'web');
 
@@ -352,7 +346,7 @@ class UsersReadTest extends TestCase
             ->assertJsonValidationErrors('date');
 
         $this->getJson(route('usuarios.index', [
-            'sort' => 'Password',
+            'sort' => 'password',
         ]))
             ->assertUnprocessable()
             ->assertJsonValidationErrors('sort');
@@ -372,7 +366,7 @@ class UsersReadTest extends TestCase
         $this->actingAs($root, 'web');
 
         $filters = [
-            'q' => $target->Email,
+            'q' => $target->email,
             'sort' => 'name',
             'direction' => 'desc',
         ];
@@ -392,16 +386,16 @@ class UsersReadTest extends TestCase
             ->assertOk()
             ->streamedContent();
 
-        $this->assertStringContainsString($target->Email, $csv);
-        $this->assertStringNotContainsString($root->Email, $csv);
+        $this->assertStringContainsString($target->email, $csv);
+        $this->assertStringNotContainsString($root->email, $csv);
 
         $this->get(route('usuarios.export', [
             ...$filters,
             'format' => 'print',
         ]))
             ->assertOk()
-            ->assertSee($target->Email)
-            ->assertDontSee($root->Email);
+            ->assertSee($target->email)
+            ->assertDontSee($root->email);
     }
 
     public function test_values_are_escaped_and_search_wildcards_are_literal(): void
@@ -409,11 +403,11 @@ class UsersReadTest extends TestCase
         $root = $this->createUser('root');
         $target = $this->createUser('admin');
 
-        DB::table('tbl_usuarios')
+        DB::table('usuarios')
             ->where('id', $target->id)
             ->update([
-                'Nombre' => '<script>x</script>',
-                'Usuario' => 'persona%especial',
+                'nombre' => '<script>x</script>',
+                'usuario' => 'persona%especial',
             ]);
 
         $response = $this->actingAs($root, 'web')
@@ -472,7 +466,7 @@ class UsersReadTest extends TestCase
             );
     }
 
-    public function test_read_requests_do_not_modify_legacy_or_spatie_records(): void
+    public function test_read_requests_do_not_modify_core_or_spatie_records(): void
     {
         $root = $this->createUser('root');
 
@@ -544,9 +538,9 @@ class UsersReadTest extends TestCase
     private function userPayload(array $overrides = []): array
     {
         return array_replace([
-            'nombre' => 'María José', 'apepat' => 'Pérez', 'apemat' => 'López',
+            'nombre' => 'María José', 'apellido_paterno' => 'Pérez', 'apellido_materno' => 'López',
             'edad' => 32, 'sexo' => 'M', 'email' => 'nueva@example.test',
-            'usuario' => 'nueva', 'password' => 'clave-nueva', 'plaza_id' => 2, 'rol_id' => 2,
+            'usuario' => 'nueva', 'password' => 'clave-nueva', 'plaza_id' => 2, 'role_id' => 2,
         ], $overrides);
     }
 
@@ -590,43 +584,39 @@ class UsersReadTest extends TestCase
         $this->put(route('usuarios.update', $subject), [])->assertForbidden();
     }
 
-    public function test_create_saves_complete_legacy_user_and_spatie_role_atomically(): void
+    public function test_create_saves_native_user_and_spatie_role_atomically(): void
     {
         $this->enableWrites();
         $root = $this->createUser('root');
         $this->actingAs($root, 'web')
             ->post(route('usuarios.store'), $this->userPayload())
             ->assertRedirect(route('usuarios.index'))->assertSessionHas('message');
-        $user = User::where('Usuario', 'nueva')->firstOrFail();
-        $this->assertSame('María José', $user->Nombre);
-        $this->assertSame('M', $user->Sexo);
+        $user = Usuario::where('usuario', 'nueva')->firstOrFail();
+        $this->assertSame('María José', $user->nombre);
+        $this->assertSame('M', $user->sexo);
         $this->assertSame(2, $user->plaza_id);
-        $this->assertSame(2, $user->rol_id);
-        $this->assertSame(sha1('clave-nueva'), $user->Password);
-        $this->assertSame(sha1((string) $user->id), $user->sha1_id);
-        $this->assertTrue(password_verify((string) $user->id, $user->Hash));
+        $this->assertTrue(Hash::check('clave-nueva', $user->password));
         $this->assertSame(['admin'], $user->getRoleNames()->all());
-        $this->assertDatabaseCount('tbl_bitacora_accesos', 0);
+        $this->assertDatabaseCount('bitacora_accesos', 0);
     }
 
-    public function test_update_preserves_password_sex_identifiers_and_existing_roles_when_role_unchanged(): void
+    public function test_update_preserves_password_sex_and_existing_role(): void
     {
         $this->enableWrites();
         $root = $this->createUser('root');
         $subject = $this->createUser('admin');
-        $subject->assignRole('socio');
         $original = $subject->getAttributes();
-        $payload = $this->userPayload(['password' => '', 'rol_id' => 2]);
+        $payload = $this->userPayload(['password' => '', 'role_id' => 2]);
         unset($payload['sexo']);
         $this->actingAs($root, 'web')->put(route('usuarios.update', $subject), $payload)
             ->assertRedirect(route('usuarios.index'))->assertSessionHas('message', 'Perfil Actualizado');
         $subject->refresh();
-        foreach (['Password', 'Hash', 'sha1_id', 'Sexo'] as $field) {
+        foreach (['password', 'sexo'] as $field) {
             $this->assertSame($original[$field], $subject->{$field});
         }
         $this->assertSame(2, $subject->plaza_id);
-        $this->assertSame('María José', $subject->Nombre);
-        $this->assertEqualsCanonicalizing(['admin', 'socio'], $subject->getRoleNames()->all());
+        $this->assertSame('María José', $subject->nombre);
+        $this->assertSame(['admin'], $subject->getRoleNames()->all());
     }
 
     public function test_logout_requires_csrf_and_invalidates_the_authenticated_session(): void
@@ -652,108 +642,25 @@ class UsersReadTest extends TestCase
         $this->get(route('inicio'))->assertRedirect(route('login'));
     }
 
-    public function test_changed_role_and_password_remain_compatible_with_legacy_login(): void
+    public function test_changed_role_and_password_work_with_native_login(): void
     {
         $this->enableWrites();
         $root = $this->createUser('root');
         $subject = $this->createUser('admin');
-        $payload = $this->userPayload(['rol_id' => 5]);
+        $payload = $this->userPayload(['role_id' => 5]);
         unset($payload['sexo']);
         $this->actingAs($root, 'web')->put(route('usuarios.update', $subject), $payload)->assertRedirect();
         $subject->refresh();
-        $this->assertSame(5, $subject->rol_id);
         $this->assertSame(['socio'], $subject->getRoleNames()->all());
-        $this->assertSame(sha1('clave-nueva'), $subject->Password);
+        $this->assertTrue(Hash::check('clave-nueva', $subject->password));
 
         // Only synthetic SQLite data; exercise the active login without changing it.
-        Schema::create('tbl_reporte_ventas', function (Blueprint $table): void {
-            $table->date('Fecha');
-            $table->integer('plaza_id');
-        });
         $this->post(route('logout'))->assertRedirect(route('login'));
         $this->post(route('login.store'), ['username' => 'nueva', 'password' => 'clave-nueva'])
             ->assertRedirect(route('inicio'));
         $this->assertAuthenticatedAs($subject, 'web');
-        $this->assertSame(sha1('clave-nueva'), $subject->fresh()->Password);
-        $this->assertDatabaseHas('tbl_bitacora_accesos', ['usuario_id' => $subject->id, 'plaza_id' => 2]);
-    }
-
-    #[DataProvider('legacyLoginRoles')]
-    public function test_login_reconciles_a_legacy_created_user_without_a_spatie_assignment(
-        int $legacyRoleId,
-        string $spatieRole,
-    ): void {
-        $subject = $this->createLegacyOnlyUser($legacyRoleId);
-        $this->createLoginReportTable();
-
-        $this->post(route('login.store'), [
-            'username' => $subject->Usuario,
-            'password' => 'clave-de-prueba',
-        ])->assertRedirect(route('inicio'));
-
-        $this->assertAuthenticatedAs($subject, 'web');
-        $this->assertSame([$spatieRole], $subject->fresh()->getRoleNames()->all());
-        $this->assertDatabaseHas('tbl_bitacora_accesos', [
-            'usuario_id' => $subject->id,
-            'plaza_id' => $subject->plaza_id,
-        ]);
-    }
-
-    public static function legacyLoginRoles(): array
-    {
-        return [
-            'dueño' => [1, 'superadmin'],
-            'manager' => [2, 'admin'],
-            'gerente' => [3, 'root'],
-            'submanager' => [4, 'submanager'],
-            'socio' => [5, 'socio'],
-        ];
-    }
-
-    public function test_login_replaces_a_stale_spatie_role_after_a_legacy_role_change(): void
-    {
-        $subject = $this->createUser('admin');
-        DB::table('tbl_usuarios')->where('id', $subject->id)->update(['rol_id' => 4]);
-        $this->createLoginReportTable();
-
-        $this->post(route('login.store'), [
-            'username' => $subject->Usuario,
-            'password' => 'clave-de-prueba',
-        ])->assertRedirect(route('inicio'));
-
-        $this->assertSame(['submanager'], $subject->fresh()->getRoleNames()->all());
-        $this->assertDatabaseHas('tbl_bitacora_accesos', ['usuario_id' => $subject->id]);
-    }
-
-    public function test_login_rejects_an_invalid_legacy_role_without_assigning_access_or_logging_it(): void
-    {
-        DB::table('tbl_roles')->insert(['id' => 99, 'Nombre' => 'No migrado']);
-        $subject = $this->createLegacyOnlyUser(99);
-        $this->createLoginReportTable();
-
-        $this->post(route('login.store'), [
-            'username' => $subject->Usuario,
-            'password' => 'clave-de-prueba',
-        ])->assertForbidden();
-
-        $this->assertGuest('web');
-        $this->assertSame([], $subject->fresh()->getRoleNames()->all());
-        $this->assertDatabaseMissing('tbl_bitacora_accesos', ['usuario_id' => $subject->id]);
-    }
-
-    public function test_login_rejects_a_legacy_role_when_its_spatie_role_is_not_provisioned(): void
-    {
-        Role::findByName('submanager', 'web')->delete();
-        $subject = $this->createLegacyOnlyUser(4);
-        $this->createLoginReportTable();
-
-        $this->post(route('login.store'), [
-            'username' => $subject->Usuario,
-            'password' => 'clave-de-prueba',
-        ])->assertForbidden();
-
-        $this->assertGuest('web');
-        $this->assertDatabaseMissing('tbl_bitacora_accesos', ['usuario_id' => $subject->id]);
+        $this->assertTrue(Hash::check('clave-nueva', $subject->fresh()->password));
+        $this->assertDatabaseHas('bitacora_accesos', ['usuario_id' => $subject->id, 'plaza_id' => 2]);
     }
 
     public function test_success_messages_preserve_the_legacy_edit_alert_and_creation_dialog_contract(): void
@@ -799,12 +706,12 @@ class UsersReadTest extends TestCase
         $subject = $this->createUser('superadmin', plaza: 2);
         $this->actingAs($root, 'web')->get(route('usuarios.edit', $subject))->assertOk()
             ->assertSee('Apellido Paterno')->assertSee('Deja vacío')
-            ->assertDontSee($subject->Password)->assertDontSee($subject->Hash)->assertDontSee($subject->sha1_id)
+            ->assertDontSee($subject->password)
             ->assertDontSee('name="sexo"', false);
-        $payload = $this->userPayload(['email' => $subject->Email, 'usuario' => $subject->Usuario, 'rol_id' => 1]);
+        $payload = $this->userPayload(['email' => $subject->email, 'usuario' => $subject->usuario, 'role_id' => 1]);
         unset($payload['sexo'], $payload['password']);
         $this->put(route('usuarios.update', $subject), $payload)->assertRedirect(route('usuarios.index'));
-        $this->assertSame(1, $subject->fresh()->rol_id);
+        $this->assertSame(['superadmin'], $subject->fresh()->getRoleNames()->all());
         $this->get(route('usuarios.edit', 999999))->assertNotFound();
     }
 
@@ -815,12 +722,12 @@ class UsersReadTest extends TestCase
         $this->actingAs($root, 'web');
         $before = $this->snapshot();
         $this->post(route('usuarios.store'), [])->assertSessionHasErrors([
-            'nombre', 'apepat', 'apemat', 'edad', 'sexo', 'email', 'usuario', 'password', 'plaza_id', 'rol_id',
+            'nombre', 'apellido_paterno', 'apellido_materno', 'edad', 'sexo', 'email', 'usuario', 'password', 'plaza_id', 'role_id',
         ]);
         $this->post(route('usuarios.store'), $this->userPayload([
             'nombre' => str_repeat('a', 26), 'edad' => 128, 'sexo' => 'X',
-            'email' => $root->Email, 'usuario' => $root->Usuario, 'plaza_id' => 999, 'rol_id' => 999,
-        ]))->assertSessionHasErrors(['nombre', 'edad', 'sexo', 'email', 'usuario', 'plaza_id', 'rol_id']);
+            'email' => $root->email, 'usuario' => $root->usuario, 'plaza_id' => 999, 'role_id' => 999,
+        ]))->assertSessionHasErrors(['nombre', 'edad', 'sexo', 'email', 'usuario', 'plaza_id', 'role_id']);
         $this->assertSame($before, $this->snapshot());
     }
 
@@ -831,7 +738,7 @@ class UsersReadTest extends TestCase
         $subject = $this->createUser('admin');
         $before = $this->snapshot();
         $this->actingAs($root, 'web')->put(route('usuarios.update', $subject), $this->userPayload([
-            'email' => $root->Email, 'usuario' => $root->Usuario,
+            'email' => $root->email, 'usuario' => $root->usuario,
             'Password' => 'spoof', 'Hash' => 'spoof', 'sha1_id' => 'spoof',
         ]))->assertSessionHasErrors(['email', 'usuario', 'sexo', 'Password', 'Hash', 'sha1_id']);
         $this->assertSame($before, $this->snapshot());
@@ -844,7 +751,7 @@ class UsersReadTest extends TestCase
         try {
             app(SaveUser::class)->handle($this->userPayload());
             $this->fail('Expected missing mapped role to abort transaction');
-        } catch (RoleDoesNotExist) {
+        } catch (ValidationException) {
             $this->assertSame($before, $this->snapshot());
         }
     }
@@ -855,9 +762,9 @@ class UsersReadTest extends TestCase
         Role::findByName('socio', 'web')->delete();
         $before = $this->snapshot();
         try {
-            app(SaveUser::class)->handle($this->userPayload(['rol_id' => 5]), $subject);
+            app(SaveUser::class)->handle($this->userPayload(['role_id' => 5]), $subject);
             $this->fail('Expected missing mapped role to abort transaction');
-        } catch (RoleDoesNotExist) {
+        } catch (ValidationException) {
             $this->assertSame($before, $this->snapshot());
         }
     }
@@ -880,13 +787,13 @@ class UsersReadTest extends TestCase
         $rows = [];
         for ($i = 0; $i < 505; $i++) {
             $rows[] = [
-                'Nombre' => sprintf('Listado %04d', $i), 'Apepat' => 'Apellido', 'Apemat' => 'Segundo',
-                'Edad' => 30, 'Sexo' => 'H', 'Email' => "export$i@example.test", 'Usuario' => "export$i",
-                'Password' => sha1('test'), 'Hash' => 'test', 'sha1_id' => sha1((string) $i), 'rol_id' => 2, 'plaza_id' => 2,
+                'nombre' => sprintf('Listado %04d', $i), 'apellido_paterno' => 'Apellido', 'apellido_materno' => 'Segundo',
+                'edad' => 30, 'sexo' => 'H', 'email' => "export$i@example.test", 'usuario' => "export$i",
+                'password' => sha1('test'), 'plaza_id' => 2, 'created_at' => null, 'updated_at' => null,
             ];
         }
-        DB::table('tbl_usuarios')->insert($rows);
-        DB::table('tbl_usuarios')->where('Usuario', 'export0')->update(['Email' => '=HYPERLINK("test")']);
+        DB::table('usuarios')->insert($rows);
+        DB::table('usuarios')->where('usuario', 'export0')->update(['email' => '=HYPERLINK("test")']);
         $before = $this->snapshot();
         $response = $this->actingAs($root, 'web')->get(route('usuarios.export', [
             'format' => 'xlsx', 'q' => 'Listado', 'sort' => 'name', 'direction' => 'desc', 'page' => 2,
@@ -929,7 +836,7 @@ class UsersReadTest extends TestCase
             $book = IOFactory::load($path);
             $sheet = $book->getActiveSheet();
             $this->assertSame(4, $sheet->getHighestRow());
-            $this->assertSame(['2026-10-10', '09:00:00', 'Plaza del acceso', $root->Nombre, 'Gerente'], $sheet->rangeToArray('A4:E4')[0]);
+            $this->assertSame(['2026-10-10', '09:00:00', 'Plaza del acceso', $root->nombre, 'Gerente'], $sheet->rangeToArray('A4:E4')[0]);
             $book->disconnectWorksheets();
         } finally {
             @unlink($path);
@@ -941,10 +848,10 @@ class UsersReadTest extends TestCase
         $root = $this->createUser('root');
         for ($i = 0; $i < 105; $i++) {
             $other = $this->createUser('admin', plaza: 2);
-            $other->Nombre = sprintf('PDF %03d', $i);
+            $other->nombre = sprintf('PDF %03d', $i);
             $other->save();
         }
-        $other->Nombre = 'PDF <script>alert(1)</script>';
+        $other->nombre = 'PDF <script>alert(1)</script>';
         $other->save();
         $this->actingAs($root, 'web');
         $before = $this->snapshot();
@@ -960,7 +867,7 @@ class UsersReadTest extends TestCase
         $this->assertSame(105 * 5, $cells->length);
         $this->assertSame('PDF 000', $cells->item(0)->textContent);
         $this->assertSame('PDF <script>alert(1)</script>', $cells->item(104 * 5)->textContent);
-        $this->assertStringNotContainsString($root->Nombre, $dom->textContent);
+        $this->assertStringNotContainsString($root->nombre, $dom->textContent);
         $options = $pdf->getOptions();
         $this->assertFalse($options->getIsRemoteEnabled());
         $this->assertFalse($options->getIsPhpEnabled());
@@ -992,7 +899,7 @@ class UsersReadTest extends TestCase
         $this->enableWrites();
         $root = $this->createUser('root');
         $this->actingAs($root, 'web')->from(route('usuarios.index'))
-            ->post(route('usuarios.store'), $this->userPayload(['usuario' => $root->Usuario]))
+            ->post(route('usuarios.store'), $this->userPayload(['usuario' => $root->usuario]))
             ->assertRedirect(route('usuarios.index'))->assertSessionHasErrors('usuario')
             ->assertSessionMissing('_old_input.password');
         $this->assertSame(['usuario'], array_keys(session('errors')->getBag('default')->messages()));
@@ -1045,77 +952,28 @@ class UsersReadTest extends TestCase
         return $wrapper;
     }
 
-    private function createUser(string $role, int $plaza = 1): User
+    private function createUser(string $role, int $plaza = 1): Usuario
     {
-        $number = DB::table('tbl_usuarios')->count() + 1;
-
-        $roleIds = [
-            'superadmin' => 1,
-            'admin' => 2,
-            'root' => 3,
-            'submanager' => 4,
-            'socio' => 5,
-        ];
-
-        $id = DB::table('tbl_usuarios')->insertGetId([
-            'Nombre' => 'Persona '.$number,
-            'Apepat' => 'Apellido',
-            'Apemat' => 'Segundo',
-            'Edad' => 30,
-            'Sexo' => 'H',
-            'Email' => 'persona'.$number.'@example.test',
-            'Usuario' => 'persona'.$number,
-            'Password' => sha1('clave-de-prueba'),
-            'Hash' => 'HASH_NO_PUBLICAR',
-            'sha1_id' => 'SHA1_ID_NO_PUBLICAR',
-            'rol_id' => $roleIds[$role],
-            'plaza_id' => $plaza,
+        $number = Usuario::count() + 1;
+        $user = Usuario::forceCreate([
+            'nombre' => 'Persona '.$number, 'apellido_paterno' => 'Apellido', 'apellido_materno' => 'Segundo',
+            'edad' => 30, 'sexo' => 'H', 'email' => 'persona'.$number.'@example.test',
+            'usuario' => 'persona'.$number, 'password' => sha1('clave-de-prueba'), 'plaza_id' => $plaza,
         ]);
-
-        $user = User::query()->findOrFail($id);
         $user->assignRole($role);
 
         return $user;
     }
 
-    private function createLegacyOnlyUser(int $legacyRoleId, int $plaza = 1): User
-    {
-        $number = DB::table('tbl_usuarios')->count() + 1;
-        $id = DB::table('tbl_usuarios')->insertGetId([
-            'Nombre' => 'Legacy '.$number,
-            'Apepat' => 'Apellido',
-            'Apemat' => 'Segundo',
-            'Edad' => 30,
-            'Sexo' => 'H',
-            'Email' => 'legacy'.$number.'@example.test',
-            'Usuario' => 'legacy'.$number,
-            'Password' => sha1('clave-de-prueba'),
-            'Hash' => 'HASH_NO_PUBLICAR',
-            'sha1_id' => 'SHA1_ID_NO_PUBLICAR',
-            'rol_id' => $legacyRoleId,
-            'plaza_id' => $plaza,
-        ]);
-
-        return User::query()->findOrFail($id);
-    }
-
-    private function createLoginReportTable(): void
-    {
-        Schema::create('tbl_reporte_ventas', function (Blueprint $table): void {
-            $table->date('Fecha');
-            $table->integer('plaza_id');
-        });
-    }
-
     private function insertAccess(
-        User $user,
+        Usuario $user,
         string $date,
         int $plazaId,
         string $time,
     ): void {
-        DB::table('tbl_bitacora_accesos')->insert([
-            'Fecha' => $date,
-            'Hora' => $time,
+        DB::table('bitacora_accesos')->insert([
+            'fecha' => $date,
+            'hora' => $time,
             'usuario_id' => $user->id,
             'plaza_id' => $plazaId,
         ]);
@@ -1126,10 +984,9 @@ class UsersReadTest extends TestCase
         $snapshot = [];
 
         foreach ([
-            'tbl_usuarios',
-            'tbl_roles',
-            'tbl_plazas',
-            'tbl_bitacora_accesos',
+            'usuarios',
+            'plazas',
+            'bitacora_accesos',
             'roles',
             'permissions',
             'model_has_roles',
@@ -1147,96 +1004,6 @@ class UsersReadTest extends TestCase
 
     private function createSchema(): void
     {
-        $schema = Schema::connection(self::CONNECTION);
-
-        $schema->create('tbl_plazas', function (Blueprint $table): void {
-            $table->increments('id');
-            $table->string('Nombre', 50);
-            $table->string('Acronimo', 20);
-        });
-
-        $schema->create('tbl_roles', function (Blueprint $table): void {
-            $table->increments('id');
-            $table->string('Nombre', 50);
-        });
-
-        $schema->create('tbl_usuarios', function (Blueprint $table): void {
-            $table->increments('id');
-            $table->string('Nombre', 25);
-            $table->string('Apepat', 25);
-            $table->string('Apemat', 25);
-            $table->tinyInteger('Edad');
-            $table->string('Sexo', 1);
-            $table->string('Email', 75)->unique();
-            $table->string('Usuario', 50)->unique();
-            $table->string('Password');
-            $table->string('Hash');
-            $table->string('sha1_id');
-            $table->unsignedInteger('plaza_id');
-            $table->unsignedInteger('rol_id');
-
-            $table->foreign('plaza_id')
-                ->references('id')
-                ->on('tbl_plazas');
-
-            $table->foreign('rol_id')
-                ->references('id')
-                ->on('tbl_roles');
-        });
-
-        $schema->create(
-            'tbl_bitacora_accesos',
-            function (Blueprint $table): void {
-                $table->increments('id');
-                $table->date('Fecha');
-                $table->time('Hora');
-                $table->unsignedInteger('usuario_id');
-                $table->unsignedInteger('plaza_id');
-            },
-        );
-
-        foreach (['roles', 'permissions'] as $tableName) {
-            $schema->create(
-                $tableName,
-                function (Blueprint $table): void {
-                    $table->bigIncrements('id');
-                    $table->string('name');
-                    $table->string('guard_name');
-                    $table->timestamps();
-
-                    $table->unique(['name', 'guard_name']);
-                },
-            );
-        }
-
-        foreach ([
-            'model_has_roles' => 'role_id',
-            'model_has_permissions' => 'permission_id',
-        ] as $tableName => $key) {
-            $schema->create(
-                $tableName,
-                function (Blueprint $table) use ($key): void {
-                    $table->unsignedBigInteger($key);
-                    $table->string('model_type');
-                    $table->unsignedBigInteger('model_id');
-
-                    $table->primary([
-                        $key,
-                        'model_id',
-                        'model_type',
-                    ]);
-                },
-            );
-        }
-
-        $schema->create(
-            'role_has_permissions',
-            function (Blueprint $table): void {
-                $table->unsignedBigInteger('permission_id');
-                $table->unsignedBigInteger('role_id');
-
-                $table->primary(['permission_id', 'role_id']);
-            },
-        );
+        $this->artisan('migrate', ['--database' => self::CONNECTION, '--force' => true])->assertExitCode(0);
     }
 }

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Models\Usuario;
 use App\Services\Legacy\ImportConnections;
 use App\Services\Legacy\ImportSafetyException;
@@ -153,7 +152,7 @@ class LegacyCoreImportTest extends TestCase
         $this->assertSame('23:59:58', $access->hora);
         $this->assertSame('Café Muñoz', Usuario::findOrFail(71)->plaza->nombre);
         $this->assertTrue(Usuario::findOrFail(71)->hasRole('root', 'web'));
-        $this->assertSame(User::class, config('auth.providers.users.model'));
+        $this->assertSame(Usuario::class, config('auth.providers.users.model'));
         $before = $this->snapshot('mysql');
         foreach (['legacy:validar-nucleo', 'legacy:inicializar-permisos', 'legacy:importar-plazas', 'legacy:importar-usuarios', 'legacy:importar-accesos'] as $command) {
             $this->artisan($command)->assertExitCode(0);

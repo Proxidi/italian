@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Users;
 
-use App\Actions\Users\SaveUser;
-use App\Models\User;
+use App\Models\Usuario;
+use App\Support\CorePermissions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -13,33 +13,33 @@ class SaveUserRequest extends FormRequest
     {
         $user = $this->route('user');
 
-        return $user instanceof User
+        return $user instanceof Usuario
             ? $this->user('web')->can('update', $user)
-            : $this->user('web')->can('create', User::class);
+            : $this->user('web')->can('create', Usuario::class);
     }
 
     public function rules(): array
     {
         $user = $this->route('user');
-        $creating = ! $user instanceof User;
+        $creating = ! $user instanceof Usuario;
 
         return [
             'nombre' => ['required', 'string', 'max:25'],
-            'apepat' => ['required', 'string', 'max:25'],
-            'apemat' => ['required', 'string', 'max:25'],
-            // Edad is a signed TINYINT in the temporary legacy schema.
+            'apellido_paterno' => ['required', 'string', 'max:25'],
+            'apellido_materno' => ['required', 'string', 'max:25'],
             'edad' => ['required', 'integer', 'between:0,127'],
             'sexo' => $creating ? ['required', Rule::in(['H', 'M'])] : ['prohibited'],
-            'email' => ['required', 'email', 'max:75', Rule::unique(User::class, 'Email')->ignore($user)],
-            'usuario' => ['required', 'string', 'max:50', Rule::unique(User::class, 'Usuario')->ignore($user)],
+            'email' => ['required', 'email', 'max:75', Rule::unique(Usuario::class, 'email')->ignore($user)],
+            'usuario' => ['required', 'string', 'max:50', Rule::unique(Usuario::class, 'usuario')->ignore($user)],
             'password' => [
                 $creating ? 'required' : 'nullable',
                 'string',
                 'max:4096',
                 Rule::when($this->input('password') !== null, ['filled']),
             ],
-            'plaza_id' => ['required', 'integer', Rule::exists('tbl_plazas', 'id')],
-            'rol_id' => ['required', 'integer', Rule::in(array_keys(SaveUser::ROLES)), Rule::exists('tbl_roles', 'id')],
+            'plaza_id' => ['required', 'integer', Rule::exists('plazas', 'id')],
+            'role_id' => ['required', 'integer', Rule::exists('roles', 'id')->where('guard_name', 'web')->whereIn('name', array_keys(CorePermissions::labels()))],
+            'rol_id' => ['prohibited'],
             'Password' => ['prohibited'],
             'Hash' => ['prohibited'],
             'sha1_id' => ['prohibited'],
@@ -65,7 +65,7 @@ class SaveUserRequest extends FormRequest
 
     public function attributes(): array
     {
-        return ['nombre' => 'nombre', 'apepat' => 'apellido paterno', 'apemat' => 'apellido materno',
-            'edad' => 'edad', 'usuario' => 'User Name', 'plaza_id' => 'plaza', 'rol_id' => 'rol'];
+        return ['nombre' => 'nombre', 'apellido_paterno' => 'apellido paterno', 'apellido_materno' => 'apellido materno',
+            'edad' => 'edad', 'usuario' => 'User Name', 'plaza_id' => 'plaza', 'role_id' => 'rol'];
     }
 }

@@ -2,50 +2,41 @@
 
 namespace App\Actions\Users;
 
-use App\Models\User;
-use App\Support\LegacyUserRoleSynchronizer;
+use App\Models\Plaza;
+use App\Models\Usuario;
+use App\Support\CorePermissions;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
 class SaveUser
 {
-    public const ROLES = LegacyUserRoleSynchronizer::ROLES;
-
-    public function handle(array $data, ?User $subject = null): User
+    public function handle(#[\SensitiveParameter] array $data, ?Usuario $subject = null): Usuario
     {
-        return DB::transaction(function () use ($data, $subject): User {
+        return DB::transaction(function () use ($data, $subject): Usuario {
             $creating = $subject === null;
-            $user = $creating ? new User : User::query()->lockForUpdate()->findOrFail($subject->getKey());
-            $roleChanged = $creating || $user->rol_id !== (int) $data['rol_id'];
+            $user = $creating ? new Usuario : Usuario::query()->lockForUpdate()->findOrFail($subject->getKey());
+            $role = Role::query()->whereKey($data['role_id'])->where('guard_name', 'web')->whereIn('name', array_keys(CorePermissions::labels()))->lockForUpdate()->first();
+            if (! $role || $role->guard_name !== 'web' || ! array_key_exists($role->name, CorePermissions::labels())
+                || ! Plaza::query()->whereKey($data['plaza_id'])->lockForUpdate()->exists()) {
+                throw ValidationException::withMessages(['role_id' => 'La plaza o el rol seleccionado ya no está disponible.']);
+            }
 
             $user->fill([
-                'Nombre' => $data['nombre'], 'Apepat' => $data['apepat'], 'Apemat' => $data['apemat'],
-                'Edad' => $data['edad'], 'Email' => $data['email'], 'Usuario' => $data['usuario'],
+                'nombre' => $data['nombre'], 'apellido_paterno' => $data['apellido_paterno'], 'apellido_materno' => $data['apellido_materno'],
+                'edad' => $data['edad'], 'email' => $data['email'], 'usuario' => $data['usuario'],
             ]);
             $user->plaza_id = $data['plaza_id'];
-            $user->rol_id = $data['rol_id'];
-
             if ($creating) {
-                $user->Sexo = $data['sexo'];
-                // Both NOT NULL legacy identifiers are completed in this transaction.
-                $user->Hash = '';
-                $user->sha1_id = '';
+                $user->sexo = $data['sexo'];
             }
             if (isset($data['password']) && $data['password'] !== '') {
-                // Required while CodeIgniter still authenticates against this column.
-                $user->Password = sha1($data['password']);
+                $user->password = Hash::make($data['password']);
             }
             $user->save();
 
-            if ($creating) {
-                $user->Hash = password_hash((string) $user->getKey(), PASSWORD_BCRYPT);
-                $user->sha1_id = sha1((string) $user->getKey());
-                $user->save();
-            }
-            if ($roleChanged) {
-                // Fail atomically if the mapped web role has not been provisioned.
-                $user->syncRoles([Role::findByName(self::ROLES[$user->rol_id], 'web')]);
-            }
+            $user->syncRoles([$role]);
 
             return $user;
         });

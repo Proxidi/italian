@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Acceso;
 use App\Models\Plaza;
-use App\Models\User;
 use App\Models\Usuario;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -149,7 +148,7 @@ class CoreSchemaTest extends TestCase
         $this->assertSame(2, Plaza::count());
     }
 
-    public function test_new_spatie_alias_does_not_change_the_active_legacy_auth_model(): void
+    public function test_spatie_alias_and_active_native_auth_provider_are_compatible(): void
     {
         [, $user] = $this->fixtures();
         $role = Role::create(['name' => 'superadmin', 'guard_name' => 'web']);
@@ -165,14 +164,10 @@ class CoreSchemaTest extends TestCase
         $user->givePermissionTo($direct);
         $this->assertDatabaseHas('model_has_permissions', ['model_type' => 'usuario', 'model_id' => $user->id]);
         $this->assertTrue($user->fresh()->can('synthetic.core.direct'));
-        $this->assertSame(User::class, (new User)->getMorphClass());
-        $this->assertSame('tbl_usuarios', (new User)->getTable());
-        $this->assertSame(User::class, config('auth.providers.users.model'));
+        $this->assertSame(Usuario::class, config('auth.providers.users.model'));
         $this->assertSame('mysql', config('database.connections.legacy.driver'));
 
-        // Spatie's inverse relation resolves the active guard provider. Simulate
-        // the future switch only inside this test, never in application config.
-        config(['auth.providers.users.model' => Usuario::class]);
+        // The inverse relation now resolves the definitive Usuario provider.
         $this->assertTrue($role->users()->whereKey($user->id)->exists());
     }
 
