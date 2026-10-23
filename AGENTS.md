@@ -73,7 +73,9 @@ Usar CSS propio y JavaScript nativo cuando sean suficientes. No introducir Passp
 
 La base legacy actual es una **restricción temporal**, no el diseño objetivo de Laravel.
 
-Dirección confirmada por el Ing. Javi: Laravel tendrá tablas nuevas con nombres limpios, preferentemente en español, migradas progresivamente por módulo mediante migrations y modelos con relaciones Eloquent apropiadas. Conservar los IDs legacy cuando sea viable e importar datos reales mediante procesos reproducibles; reservar seeders preferentemente para datos iniciales/configuración. El objetivo es abandonar las tablas `tbl_*` en la operación normal y terminar con una nueva tabla de usuarios, hashes modernos y Spatie. Los nombres, contratos y plan de transición concretos de cada módulo siguen pendientes; esta decisión no autoriza ejecutar migraciones/importaciones ni cambiar ahora SHA-1 o el esquema actual.
+Dirección confirmada por el Ing. Javi: Laravel tendrá tablas nuevas con nombres de negocio en español, minúsculas y `snake_case`, migradas progresivamente por módulo mediante migrations y modelos con relaciones Eloquent apropiadas. Conservar convenciones técnicas Laravel/Spatie cuando simplifiquen integraciones. La tabla autenticable definitiva es `usuarios`. Conservar los IDs legacy cuando sea viable e importar datos reales mediante procesos reproducibles; reservar seeders preferentemente para datos iniciales/configuración. El objetivo es abandonar las tablas `tbl_*` en la operación normal, con hashes modernos y Spatie. Los contratos y el plan de transición de cada módulo siguen pendientes; ejecutar migrations/importaciones requiere alcance y destino autorizados.
+
+El núcleo tiene migrations y modelos preparados (`plazas`, `usuarios`, `bitacora_accesos`), todavía sin importar datos ni activar `Usuario` como proveedor. La conexión principal debe usar `italian_laravel`; `legacy` apunta a `italian` solo para importadores, con una cuenta SELECT independiente. No importar el dump completo al destino ni ejecutar migrations/seeders sobre `legacy`. Verificar la configuración efectiva y el nombre de BD antes de cualquier escritura. No redirigir controladores funcionales a la fuente para compensar pantallas aún no adaptadas.
 
 Mientras se trabaja contra la BD legacy:
 
@@ -98,7 +100,9 @@ Mientras exista esta convivencia:
 - Las altas y los cambios explícitos de contraseña autorizados deben escribir temporalmente SHA-1. En edición, dejar el campo vacío conserva la contraseña; nunca enviar el hash existente al formulario;
 - no usar cast `hashed`, `Hash::make()`, `Hash::needsRehash()` ni migración automática de contraseña durante login.
 
-Esta compatibilidad no forma parte de la arquitectura final. La migración a un hash moderno debe ocurrir cuando el nuevo esquema y el retiro del login legacy lo permitan.
+Estas reglas de SHA-1 se aplican al modelo/flujo legacy actual y no autorizan escribir en `italian`. El futuro rehash se hará solo sobre `usuarios` en la BD nueva, después de validar correctamente el login. Todavía no está implementado ni activado.
+
+Los avisos reales de Corte y pendientes siguen siendo requisitos. El mock visual actual no los sustituye: no eliminar la consulta de Login a `tbl_reporte_ventas` ni clasificarla como obsoleta sin autorización; su dependencia se resolverá en una etapa posterior.
 
 ## Roles y permisos
 

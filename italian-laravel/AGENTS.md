@@ -7,8 +7,13 @@ aplicación destino; `../italian-legacy/` es la referencia funcional y de negoci
 La nueva dirección visual permite modernizar UI/UX y reutilizar los componentes
 establecidos (por ejemplo, `x-dashboard.card` para paneles de navegación). Está
 pendiente de validación final del Ing. Víctor. La estrategia del Ing. Javi de
-tablas nuevas por módulo, migrations e importaciones reproducibles es el destino,
-no una migración de BD ya implementada ni autorización para cambiar SHA-1.
+tablas nuevas por módulo, migrations e importaciones reproducibles es el destino.
+Las etapas 0/1 preparan las conexiones y el esquema/modelos del núcleo; todavía
+no hay importación de datos ni activación del proveedor `Usuario` o del rehash.
+Principal: `italian_laravel`; `legacy`: fuente `italian` de solo lectura para
+importadores. No usar la conexión `legacy` desde controladores ni ejecutar sobre
+ella migrations/seeders. Las pruebas nuevas del esquema se aíslan en SQLite
+`:memory:` o, con opt-in, en MySQL `italian_stage01_tests`, nunca en `italian`.
 
 ## Alcance antes de preparar herramientas
 

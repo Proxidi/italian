@@ -53,10 +53,11 @@ datos iniciales/configuración. El destino es abandonar `tbl_*` en la operación
 normal y autenticar contra una nueva tabla de usuarios con hashes modernos y
 Spatie. La convivencia con SHA-1 y tablas legacy es temporal.
 
-**Pendiente de implementación:** esquema/nombres definitivos de cada módulo,
-contratos de importación, transición de credenciales y retiro de compatibilidad.
-No se ha implementado esa migración en esta tarea; no renombrar anticipadamente
-tablas ni ejecutar migrations/importadores sin alcance y destino autorizados.
+**Estado actualizado:** las etapas 0/1 preparan conexiones, migrations y modelos
+de `plazas`, `usuarios` y `bitacora_accesos` (detalle al final). Siguen pendientes
+los esquemas de otros módulos, importadores, transición de credenciales y retiro
+de compatibilidad. No renombrar tablas existentes ni ejecutar migrations o
+importadores sin alcance y destino autorizados.
 
 El código Laravel actual usa el esquema legacy, pero eso no demuestra que ambos
 sistemas apunten a una misma instancia de BD. Las conexiones efectivas, datos y
@@ -1869,3 +1870,188 @@ No equivale a una sesión de navegador contra MySQL/producción: el envío del
 formulario se verifica en navegador y la invalidación real por pruebas HTTP
 aisladas. Pendientes: validación final del Ing. Víctor y revisión en la instalación
 real del responsable. No se modificó `italian-legacy/`, infraestructura ni dependencias.
+
+## BD nueva, etapas 0 y 1: conexiones y esquema preparado (2026-10-23)
+
+### Alcance y estado operativo
+
+Implementadas la configuración reproducible, las migrations del núcleo y los
+modelos nuevos. **No se importaron datos reales ni se activó el núcleo nuevo.**
+`config/auth.php`, `User`, Login, SHA-1, policies, seeders, consultas de los módulos
+y UI conservan su código funcional. El proveedor activo sigue siendo
+`App\Models\User`, que espera `tbl_usuarios`; el modelo futuro es `Usuario`.
+
+La configuración principal ahora selecciona `mysql` / `italian_laravel`; la
+conexión `legacy` apunta a `italian`, exclusivamente para futuros importadores.
+No hay fallback de credenciales ni redirección de controladores a la fuente.
+En este estado una BD nueva vacía no puede atender todavía Login ni los módulos:
+faltan los datos y la adaptación funcional de las siguientes etapas. No resolver
+esto copiando `tbl_*` al destino ni conectando el modelo activo a la fuente.
+
+La consulta de Login a `tbl_reporte_ventas` **se conserva y no se considera
+obsoleta**. Los avisos reales de Corte/pendientes siguen siendo requisitos;
+bienvenida y pendientes actuales son una demostración visual, no su sustituto.
+
+### Entorno y medidas de protección
+
+Comprobación de este checkout: antes apuntaba a `italian`; no había configuración
+cacheada, contenedores MySQL activos ni resolución para el host `mysql`.
+Tras el cambio de `.env`, el bootstrap PHP confirmó, sin abrir conexiones PDO:
+principal `italian_laravel`, fuente `italian`, proveedor `User` y sin caché de
+configuración. **No se pudo crear/verificar una BD persistente ni los privilegios
+de la fuente real.** La cuenta legacy queda vacía hasta configurar una de SELECT.
+
+Se validó separadamente con MySQL **8.4.13** descartable, en el contenedor
+`italian-stage01-mysql`, esquema exclusivo `italian_stage01_tests`, sin puertos
+publicados, sin red exterior y con datadir en tmpfs. No tenía una BD `italian` ni
+datos del dump. No confundir esta ejecución con la instalación persistente.
+La extensión PDO MySQL se compiló solo en una imagen temporal de pruebas;
+no se cambiaron Dockerfiles, Compose ni dependencias del proyecto.
+
+`legacy` usa sus propias variables, sin heredar usuario/contraseña principales.
+No existe una bandera Laravel que convierta una cuenta privilegiada en solo
+lectura: la protección efectiva requiere grants SELECT en MySQL, incluyendo
+revisión de privilegios globales y roles heredados. No se han verificado esos
+grants contra la fuente real. La cuenta principal también debería quedar limitada
+a la BD nueva. No reutilizar ni cambiar la cuenta de CodeIgniter para este fin.
+
+### Migrations y modelos
+
+- Se adapta `0001_01_01_000000_create_users_table.php`, conservando el nombre
+  histórico del archivo: primero crea `plazas`, después `usuarios`, y conserva
+  `password_reset_tokens` y `sessions`. No crea una tabla autenticable `users`.
+  Plazas se crea antes para satisfacer la FK de usuarios sin renombrar migrations
+  existentes ni introducir dependencias de orden ambiguas.
+- Nueva `0001_01_01_000003_create_bitacora_accesos_table.php`: fecha/hora separadas,
+  sin timestamps inventados y con índice fecha/hora. Se ejecuta después del núcleo.
+- PKs y FKs `BIGINT UNSIGNED`. FKs con índices y `RESTRICT` al eliminar:
+  `usuarios.plaza_id → plazas.id`, `bitacora_accesos.usuario_id → usuarios.id`,
+  `bitacora_accesos.plaza_id → plazas.id`. Rollback en orden inverso.
+- `usuarios`: nombre/apellidos 25, email 75 único, usuario 50 único, password 255,
+  edad TINYINT firmado, sexo de un carácter, plaza y convenciones técnicas
+  `remember_token`, `created_at`, `updated_at` nullable. No `rol_id`, `Hash`,
+  `sha1_id`, `email_verified_at`, fecha de nacimiento ni `deleted_at`.
+- `plazas`: nombre 50 y acrónimo 20, sin unicidad nueva ni timestamps.
+- `Usuario extends Authenticatable` usa guard `web`, `HasRoles`, oculta password
+  y remember_token, protege la asignación masiva de password y define `plaza()` /
+  `accesos()`. Sin cast `hashed`, para que los futuros importadores no transformen
+  accidentalmente un SHA-1. Su importación/rehash aún no están implementados.
+- `Plaza`: `usuarios()` / `accesos()`; `Acceso`: `usuario()` / `plaza()`. Los dos
+  carecen de timestamps. Acceso conserva fecha/hora literales, sin convertir zona.
+- Se mantienen las cinco tablas y migrations técnicas de Spatie sin cambios ni
+  `nombre_mostrado` por ahora. No se copian roles/asociaciones ni se ejecutan
+  seeders reales. El mapeo de los cinco roles existentes sigue siendo referencia.
+- `AppServiceProvider` registra `usuario → App\Models\Usuario` con `morphMap`,
+  sin imponerlo globalmente. `User` conserva `App\Models\User` como morph class.
+  Los pivots futuros usarán `model_id` y `model_type=usuario`; no tienen FK al
+  usuario por ser polimórficos. La relación inversa `Role::users()` sigue usando
+  el proveedor activo: apuntará al nuevo modelo al activar ese proveedor en una
+  etapa posterior, no mediante cambios prematuros en esta configuración.
+
+Esta adaptación del scaffold está destinada a una **BD nueva**. Si la migration
+inicial ya figura ejecutada en otra instalación, `migrate` no la vuelve a aplicar:
+no usar `migrate:fresh` sobre esa instalación ni sobre `italian` para compensarlo.
+Revisar ese caso antes de continuar. Los IDs y fechas históricas se preservarán
+durante la etapa 2; aún no se ha implementado ningún importador.
+
+### Reproducir localmente
+
+1. Configurar `.env` a partir de las variables documentadas en `.env.example`.
+   No sobrescribir un `.env` existente ni versionar contraseñas reales:
+
+   ```dotenv
+   DB_CONNECTION=mysql
+   DB_HOST=mysql
+   DB_PORT=3306
+   DB_DATABASE=italian_laravel
+   DB_USERNAME=<cuenta_principal>
+   DB_PASSWORD=<secreto_local>
+   DB_CHARSET=utf8mb4
+   DB_COLLATION=utf8mb4_unicode_ci
+   LEGACY_DB_HOST=mysql
+   LEGACY_DB_PORT=3306
+   LEGACY_DB_DATABASE=italian
+   LEGACY_DB_USERNAME=italian_legacy_reader
+   LEGACY_DB_PASSWORD=<otro_secreto_local>
+   LEGACY_DB_CHARSET=utf8mb4
+   LEGACY_DB_COLLATION=utf8mb4_unicode_ci
+   ```
+
+   `mysql` es el host del servicio Sail; desde PHP ejecutado fuera de Sail usar
+   el host/puerto publicado que corresponda. Opcionales: `LEGACY_DB_SOCKET` y
+   `LEGACY_MYSQL_ATTR_SSL_CA`. Revisar `DB_URL`, variables externas y caché si
+   existen, porque pueden cambiar el destino efectivo.
+
+2. Con MySQL de desarrollo disponible, entrar como administrador, por ejemplo
+   `./vendor/bin/sail exec mysql mysql -u root -p`. No incluir el secreto en la
+   línea de comandos. Crear solo el destino y cuentas independientes, adaptando
+   host/usuarios y sustituyendo los placeholders localmente:
+
+   ```sql
+   CREATE DATABASE IF NOT EXISTS italian_laravel
+     CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   CREATE USER 'italian_app'@'%' IDENTIFIED BY '<secreto_principal>';
+   GRANT ALL PRIVILEGES ON italian_laravel.* TO 'italian_app'@'%';
+   CREATE USER 'italian_legacy_reader'@'%' IDENTIFIED BY '<secreto_lectura>';
+   GRANT SELECT ON italian.* TO 'italian_legacy_reader'@'%';
+   ```
+
+   Si una cuenta ya existe, revisar sus grants antes de reutilizarla; no resetear
+   contraseñas ni revocar permisos de CodeIgniter. Para volúmenes Sail existentes,
+   cambiar `MYSQL_DATABASE` mediante `.env` no garantiza crear la BD ni conceder
+   permisos retroactivamente. La fuente debe existir previamente: no se importa
+   `italian.sql` durante esta etapa.
+
+3. Limpiar y verificar configuración **antes** de migrar:
+
+   ```sh
+   ./vendor/bin/sail artisan config:clear
+   ./vendor/bin/sail artisan tinker --execute='dump(DB::connection("mysql")->selectOne("SELECT DATABASE() AS db"));'
+   ./vendor/bin/sail artisan tinker --execute='dump(DB::connection("legacy")->selectOne("SELECT DATABASE() AS db"), DB::connection("legacy")->select("SHOW GRANTS FOR CURRENT_USER"));'
+   ./vendor/bin/sail artisan tinker --execute='dump(DB::connection("mysql")->select("SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE()"));'
+   ```
+
+   Deben confirmar respectivamente destino `italian_laravel`, fuente `italian` y
+   grants de lectura. Detenerse si el destino no es el esperado, contiene `tbl_*`
+   o ya tiene un esquema incompatible; no vaciarlo ni recrearlo automáticamente.
+
+4. Solo tras esas comprobaciones:
+
+   ```sh
+   ./vendor/bin/sail artisan migrate --database=mysql
+   ./vendor/bin/sail artisan migrate:status --database=mysql
+   ./vendor/bin/sail exec laravel.test php vendor/bin/phpunit tests/Feature/CoreSchemaTest.php --do-not-cache-result
+   ```
+
+   El test usa SQLite `:memory:` por defecto, aunque `.env` tenga MySQL. La variante
+   MySQL es opt-in (`CORE_SCHEMA_MYSQL=1`) y usa únicamente el esquema reservado
+   `italian_stage01_tests`, con `CORE_SCHEMA_MYSQL_HOST/PORT/USERNAME/PASSWORD`
+   independientes. Crear ese esquema descartable expresamente antes de probar;
+   la prueba ejecuta migrations/rollback **solo allí**, nunca sobre `italian` ni
+   `italian_laravel`. En Sail pasar esas variables con `sail exec -e ...` al
+   servicio PHP, no asumir que se transmiten desde la shell anfitriona.
+
+No ejecutar `composer setup` como sustituto del preflight: incluye migrations
+automáticas. No ejecutar `DatabaseSeeder`, seeders funcionales, importadores,
+`migrate:fresh` ni comandos de migrations con `--database=legacy`.
+
+### Validación y pendientes
+
+Pruebas del esquema: SQLite en memoria y MySQL descartable; creación desde cero,
+tablas técnicas vacías y sin `tbl_*`/`users`, rollback/recreación, columnas, FKs
+RESTRICT, unicidad, índices, tipos/longitudes MySQL, relaciones Eloquent, IDs y
+fecha/hora sintéticos, timestamps históricos nulos, atributos sensibles y Spatie
+polimórfico sin bypass. Resultados: **11 pruebas / 127 aserciones en SQLite** y
+**11 pruebas / 150 aserciones en MySQL 8.4.13**. Regresión dirigida de navegación,
+roles, login y logout con el modelo legacy: **12 pruebas / 106 aserciones** en
+SQLite aislado. Pint `--test` pasó en los ocho archivos PHP nuevos/modificados;
+`git diff --check` sin errores. No se ejecutó build porque no cambiaron assets.
+Ninguna de estas comprobaciones valida datos reales. El contenedor MySQL
+descartable se retira al finalizar; no queda una BD persistente del proyecto.
+
+Etapa 2 pendiente: preflight de datos reales/grants, importadores reproducibles
+con dry-run, preservación de IDs y conciliación, bootstrap de roles/permisos sin
+sobrescribir futuras decisiones administrativas. Después se adaptarán proveedor,
+login/rehash, Usuarios, bitácora e Inicio. Configurar/Productos y la dependencia
+real de avisos de Corte mantienen su implementación actual y esperan sus propias
+etapas. No se modificó `italian-legacy/` ni se inició Pedidos.

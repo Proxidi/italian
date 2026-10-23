@@ -11,14 +11,27 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('users', function (Blueprint $table) {
+        // Fresh Laravel database only; this is not an upgrade of tbl_usuarios.
+        Schema::create('plazas', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
+            $table->string('nombre', 50);
+            $table->string('acronimo', 20);
+        });
+
+        Schema::create('usuarios', function (Blueprint $table) {
+            $table->id();
+            $table->string('nombre', 25);
+            $table->string('apellido_paterno', 25);
+            $table->string('apellido_materno', 25);
+            $table->tinyInteger('edad');
+            $table->char('sexo', 1);
+            $table->string('email', 75)->unique();
+            $table->string('usuario', 50)->unique();
             $table->string('password');
+            $table->foreignId('plaza_id')->index()->constrained('plazas')->restrictOnDelete();
             $table->rememberToken();
-            $table->timestamps();
+            $table->timestamp('created_at')->nullable();
+            $table->timestamp('updated_at')->nullable();
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
@@ -42,8 +55,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('users');
-        Schema::dropIfExists('password_reset_tokens');
         Schema::dropIfExists('sessions');
+        Schema::dropIfExists('password_reset_tokens');
+        Schema::dropIfExists('usuarios');
+        Schema::dropIfExists('plazas');
     }
 };
