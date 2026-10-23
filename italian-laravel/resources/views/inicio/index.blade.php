@@ -10,9 +10,8 @@
         <h1>
             {{ $layout['title'] }}
         </h1>
-        <p>Hola, {{ $layout['profile']['short_name'] }}. Todo listo para comenzar.</p>
+        {{-- <p>Hola, {{ $layout['profile']['short_name'] }}. Todo listo para comenzar.</p> --}}
         </div>
-        <span class="dashboard-heading__tag">{{ $layout['subtitle'] }}</span>
     </header>
 
     <section class="dashboard-grid" aria-label="Opciones del panel">

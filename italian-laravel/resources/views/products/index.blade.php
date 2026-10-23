@@ -5,8 +5,8 @@
         <h1>Panel de Productos <small>Productos</small></h1>
         <a href="{{ route('inicio') }}">Volver al Panel de Inicio <span aria-hidden="true">➜</span></a>
     </header>
-    <section class="products-cards" aria-label="Productos">
-        @foreach ([['Productos', 'Productos', 'coffe2.png', 'yellow'], ['Insumos', 'Insumos', 'unit.png', 'green'], ['Unidades', 'Gr,Kg,Lts', 'rule.png', 'white'], ['Costo de Venta', 'Costo de Venta', 'rule.png', 'white']] as [$label, $subtitle, $image, $tone])
+    <section class="dashboard-grid" aria-label="Productos">
+        @foreach ([['Productos', 'Productos', 'coffe2.png', 'yellow'], ['Insumos', 'Insumos', 'unit.png', 'green'], ['Unidades', 'Gr,Kg,Lts', 'rule.png', 'blue'], ['Costo de Venta', 'Costo de Venta', 'rule.png', 'purple']] as [$label, $subtitle, $image, $tone])
             @php
                 $destination = match ($label) {
                     'Productos' => ['products.catalog.index', 'products.catalog.view'],
@@ -17,16 +17,12 @@
                 };
                 $available = $destination && auth('web')->user()->can($destination[1]);
             @endphp
-            @if ($available)
-                <a class="products-card products-card--{{ $tone }}" href="{{ route($destination[0]) }}">
-                    <div class="products-card__heading"><img src="{{ asset('images/authenticated/'.$image) }}" width="65" height="65" alt=""><div><h2>{{ $label }}</h2><p>{{ $subtitle }}</p></div></div>
-                    <div class="products-card__footer"><span>{{ $label }}</span><span class="products-badge">Click here</span></div>
-                </a>
-            @elseif ($destination === null)
-                <article class="products-card products-card--{{ $tone }}" aria-disabled="true">
-                    <div class="products-card__heading"><img src="{{ asset('images/authenticated/'.$image) }}" width="65" height="65" alt=""><div><h2>{{ $label }}</h2><p>{{ $subtitle }}</p></div></div>
-                    <div class="products-card__footer"><span>{{ $label }}</span><span class="products-badge products-badge--pending">Pendiente de migración</span></div>
-                </article>
+            @if ($available || $destination === null)
+                <x-dashboard.card :card="[
+                    'label' => $label, 'subtitle' => $subtitle, 'image' => $image, 'tone' => $tone,
+                    'url' => $available ? route($destination[0]) : null,
+                    'footer_label' => $label, 'unavailable_message' => 'Módulo pendiente de migración',
+                ]" :style="'--card-delay: '.($loop->index * 35).'ms'" />
             @endif
         @endforeach
     </section>

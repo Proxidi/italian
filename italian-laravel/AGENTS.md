@@ -2,7 +2,13 @@
 
 Aplicar las reglas de [AGENTS.md raíz](../AGENTS.md) y consultar
 [el contexto auditado](../docs/migration-context.md). Este subdirectorio es la
-aplicación destino; `../italian-legacy/` es la referencia funcional y visual.
+aplicación destino; `../italian-legacy/` es la referencia funcional y de negocio.
+
+La nueva dirección visual permite modernizar UI/UX y reutilizar los componentes
+establecidos (por ejemplo, `x-dashboard.card` para paneles de navegación). Está
+pendiente de validación final del Ing. Víctor. La estrategia del Ing. Javi de
+tablas nuevas por módulo, migrations e importaciones reproducibles es el destino,
+no una migración de BD ya implementada ni autorización para cambiar SHA-1.
 
 ## Alcance antes de preparar herramientas
 

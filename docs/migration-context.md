@@ -11,7 +11,7 @@ sincroniza automáticamente con este checkout.
 
 Estructura comprobada:
 
-- `italian-legacy/`: CodeIgniter original; referencia funcional y visual. No se modifica; el responsable permite copiar assets necesarios a Laravel.
+- `italian-legacy/`: CodeIgniter original; referencia funcional y de negocio. Su apariencia es un antecedente, no el objetivo visual vigente. No se modifica; el responsable permite copiar assets necesarios a Laravel.
 - `italian-laravel/`: aplicación destino. Los nombres abreviados `legacy/` y `laravel/` de conversaciones previas no son las rutas de este checkout.
 - `AGENTS.md`: reglas generales; existen instrucciones adicionales en ambos subdirectorios.
 
@@ -30,19 +30,33 @@ se documenta como diferencia, no como cambio automático del requisito.
 
 ## 2. Filosofía confirmada y arquitectura futura
 
-Laravel debe conservar reglas de negocio, información, acciones, permisos y
-apariencia relevantes de CodeIgniter. La fidelidad visible no exige copiar su
-arquitectura, consultas, componentes, librerías, sesiones o mecanismo de permisos.
+Laravel debe conservar reglas de negocio, información, acciones y permisos de
+CodeIgniter. La nueva dirección solicitada por el Ing. Víctor permite rediseñar
+UI/UX hacia una experiencia profesional, atractiva, moderna y amigable, con
+profundidad y microinteracciones útiles, accesibilidad, rendimiento y consistencia.
+Reutilizar los componentes visuales establecidos sin imitar necesariamente la
+apariencia antigua. La propuesta está parcialmente implementada y **pendiente de
+validación final del Ing. Víctor**; no se considera aprobada. Las referencias a
+fidelidad visual en auditorías históricas describen el criterio de aquellas tareas.
+La conservación funcional no exige copiar arquitectura, consultas, componentes,
+librerías, sesiones o mecanismo de permisos.
 Cada flujo se debe resolver de la forma más adecuada y nativa posible en Laravel.
 Los controles de acciones pendientes pueden mantenerse visibles e inertes; eso no
 significa que esas acciones estén migradas.
 
-La base legacy también será rediseñada, con renombres de tablas y posiblemente
-columnas. No hay esquema definitivo verificado en esta auditoría. El ejemplo
-`tbl_usuarios → usuarios` sigue siendo una posibilidad heredada, no un nombre
-aprobado; se retira la afirmación de «90 % seguro» por no ser verificable aquí.
-No renombrar tablas anticipadamente ni construir abstracciones para un esquema
-supuesto.
+Dirección arquitectónica confirmada por el Ing. Javi (comunicada por el
+responsable): crear tablas nuevas con nombres limpios, preferentemente en español;
+migrar progresivamente las necesarias para cada módulo mediante migrations y
+relaciones Eloquent apropiadas; conservar IDs legacy cuando sea viable; importar
+datos reales con procesos reproducibles y reservar seeders preferentemente para
+datos iniciales/configuración. El destino es abandonar `tbl_*` en la operación
+normal y autenticar contra una nueva tabla de usuarios con hashes modernos y
+Spatie. La convivencia con SHA-1 y tablas legacy es temporal.
+
+**Pendiente de implementación:** esquema/nombres definitivos de cada módulo,
+contratos de importación, transición de credenciales y retiro de compatibilidad.
+No se ha implementado esa migración en esta tarea; no renombrar anticipadamente
+tablas ni ejecutar migrations/importadores sin alcance y destino autorizados.
 
 El código Laravel actual usa el esquema legacy, pero eso no demuestra que ambos
 sistemas apunten a una misma instancia de BD. Las conexiones efectivas, datos y
@@ -261,12 +275,15 @@ Comprobado en [AuthenticatedNavigation](../italian-laravel/app/Support/Authentic
 - Inicio, Usuarios, Configurar, Productos/Medidas e Insumos tienen destinos
   activos. Las tarjetas/enlaces restantes siguen pendientes; ver secciones 20–23.
 - CSS propio declara scroll separado y JS nativo maneja acordeón, colapso y móvil.
-  Esa implementación está presente; apariencia, accesibilidad e interacción reales
-  no se certificaron mediante navegador en esta revisión.
+  La validación reciente del rediseño con datos sintéticos se detalla al final;
+  no certifica una instalación real.
 
 Los títulos de paneles corresponden a los patrones legacy inspeccionados:
 Administración para Dueño/Gerente e Inicio para Manager/SubManager/Socio, con
-subtítulo Panel de Control. Esto no prueba fidelidad visual completa en todos los roles; la revisión sintética de Usuarios se detalla en la sección 11.
+metadato de subtítulo Panel de Control. En la UI actual de Inicio se retiró la
+etiqueta derecha y el saludo quedó comentado en Blade. El espacio derecho no
+consulta ni simula Insumos faltantes. La revisión sintética de Usuarios se detalla
+en la sección 11.
 
 ## 8. Usuarios: reglas comprobadas en el legacy
 
@@ -1795,3 +1812,60 @@ Pendiente con datos reales: collation/redondeos DOUBLE/FLOAT y FORMAT de MySQL,
 planes/costo de agregación con volumen real, zona horaria efectiva, coherencia de
 unidades en gastos y efecto en análisis históricos de Ventas. No se ejecutaron
 operaciones en BD compartida ni se migraron Inventario/Remesas/Pedidos/Ventas.
+
+## Refinamiento visual y dirección de diseño vigente (2026-10-22)
+
+La dirección del Ing. Víctor y la estrategia de BD del Ing. Javi están registradas
+en la sección 2 y en ambas guías AGENTS. La aprobación visual final sigue pendiente;
+la nueva estrategia de persistencia aún no se implementa. No se han creado tablas,
+cambiado datos reales, autenticación, SHA-1, Spatie ni contratos de navegación.
+
+Estado de presentación comprobado:
+
+- Login rediseñado con assets locales de `public/assets/images/auth/`: fondos
+  escritorio/móvil y logo blanco; Blade, CSS/Vite y JS nativo para presentación.
+  El flujo de autenticación continúa con el backend existente.
+- Shell con header verde de marca, sidebar carbón, superficies claras y
+  microinteracciones breves. La hamburguesa conserva siempre tres líneas; su
+  estado accesible sigue en `aria-expanded`. Colapso/escritorio y apertura/móvil
+  conservan su comportamiento.
+- Inicio, panel de Productos y panel de Configurar reutilizan `x-dashboard.card`
+  y `dashboard-grid`. Encabezados con color distintivo, texto contrastado (oscuro
+  sobre amarillo), icono en contenedor claro y pie blanco con acción o estado
+  pendiente. Se conservan bordes redondeados, profundidad y hover/press/entrada.
+  Se retiraron los estilos de tarjetas duplicados de Productos/Configurar; sus
+  formularios y listados no se rediseñaron. Los permisos/destinos y los estados
+  siguen siendo los existentes; no se activaron módulos pendientes.
+- En Inicio, saludo comentado en Blade para recuperarlo; etiqueta derecha
+  «Panel de Control» retirada. El espacio no tiene contador, consulta ni datos
+  simulados de Insumos faltantes.
+- Bienvenida cálida seguida del modal ámbar de pendientes: sigue siendo un
+  **mock de demostración**, sin conexión a pedidos, inventario o insumos reales.
+  Conserva el retardo de un segundo y el estado por pestaña/sesión de login.
+  Esta iteración no rediseñó esos modales.
+- Dropdown del usuario con animaciones nativas Web Animations en **cada apertura
+  y cierre**, también al interrumpir/revertir una transición. `details` permanece
+  abierto hasta terminar el cierre; su contenido se vuelve `inert` de inmediato.
+  Cierra por Escape, clic exterior o foco hacia otro elemento. Respeta movimiento
+  reducido; sin JS conserva `details` nativo. Perfil sigue deshabilitado y logout
+  sigue siendo un formulario POST con CSRF. Se conserva la corrección de foco que
+  evita cerrar el menú antes del clic de Cerrar sesión.
+
+Validación de esta iteración: Vite compiló; **21 pruebas / 202 aserciones** de
+navegación, permisos y logout aprobadas en SQLite `:memory:` dentro de PHP 8.5 sin
+red. Logout rechaza CSRF ausente y, con token válido, invalida sesión, regenera
+token, deja al usuario como invitado y redirige al Login. Harness adicional externo
+de renderizado/roles/paneles: **1 prueba / 67 aserciones**. Pint `--test` pasó en
+los tres archivos de pruebas relacionados (sin cambios PHP funcionales); el modo
+`--dirty` no estuvo disponible en la imagen de validación sin Git.
+
+Chromium con HTML real renderizado y assets compilados, fixtures sintéticos en
+`/tmp/italian-login-preview`: 1366/390 px; Inicio/Productos/Configurar, tarjetas
+disponibles y pendientes, modales y retardo, hamburguesa constante, sidebar,
+animaciones repetidas/revertidas del dropdown, Escape/clic exterior/teclado,
+envío del formulario logout con ratón y teclado, movimiento reducido y ausencia
+de overflow horizontal. Sin JS: enlaces, dropdown y formulario logout disponibles.
+No equivale a una sesión de navegador contra MySQL/producción: el envío del
+formulario se verifica en navegador y la invalidación real por pruebas HTTP
+aisladas. Pendientes: validación final del Ing. Víctor y revisión en la instalación
+real del responsable. No se modificó `italian-legacy/`, infraestructura ni dependencias.

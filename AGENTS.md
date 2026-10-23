@@ -4,7 +4,7 @@
 
 Este repositorio contiene dos sistemas relacionados:
 
-- `italian-legacy/`: sistema original en CodeIgniter 3. Es la referencia funcional y visual; no modificar su código funcional salvo solicitud explícita.
+- `italian-legacy/`: sistema original en CodeIgniter 3. Es la referencia funcional y de reglas de negocio; su apariencia es un antecedente, no el diseño objetivo. No modificar su código funcional salvo solicitud explícita.
 - `italian-laravel/`: nueva implementación en Laravel 13. Es el destino de los cambios funcionales autorizados.
 
 Si la estructura real del repositorio difiere de esos nombres, inspeccionarla antes de editar.
@@ -20,21 +20,21 @@ La aplicación Laravel debe conservar, con la mayor fidelidad posible:
 - las acciones que puede realizar;
 - las reglas de negocio;
 - los permisos y alcances efectivos;
-- la apariencia y organización visual relevantes del legacy.
+- la información y los alcances funcionales relevantes, aunque cambie su presentación.
 
 Sin embargo, **no debe copiar la implementación técnica de CodeIgniter** cuando Laravel ofrezca una forma más nativa, simple, segura, rápida o mantenible de resolver la misma necesidad.
 
-El objetivo no es producir “CodeIgniter escrito en Laravel”, sino el mismo producto visible y funcional sobre una arquitectura nueva.
+El objetivo es conservar las capacidades del producto con arquitectura Laravel y una experiencia visual renovada.
 
-## Fidelidad visual
+## Dirección visual y UX
 
-La UI de Laravel debe mantenerse lo más fiel posible al legacy.
+Por solicitud del Ing. Víctor, la UI/UX puede rediseñarse: debe ser profesional, atractiva, moderna y amigable, con profundidad visual y microinteracciones cuando aporten valor. Priorizar accesibilidad, rendimiento y consistencia; no imitar necesariamente la apariencia de CodeIgniter. La propuesta está parcialmente implementada y **pendiente de validación final del Ing. Víctor**, no aprobada.
 
-Todo dato, sección, botón, control o información visible relevante del legacy debe conservarse en Laravel, salvo decisión explícita del equipo.
+Conservar información, acciones, reglas de negocio y permisos requeridos del legacy, sin exigir la misma distribución visual.
 
-No convertir la migración en un rediseño sin autorización.
+Reutilizar los componentes visuales establecidos. Las tarjetas de navegación de Inicio, Productos y Configurar usan `x-dashboard.card`: encabezado de color distintivo, pie claro, esquinas redondeadas, profundidad y hover/press/entrada con `prefers-reduced-motion`. No aplicarlas por defecto a tablas, formularios o estadísticas. Los modales de pendientes actuales son una demostración visual, sin datos operativos reales.
 
-Se puede cambiar por completo la implementación interna de una tabla, formulario, búsqueda, paginación, exportación o interacción si el resultado visible y funcional se mantiene.
+Se puede renovar la implementación y presentación de tablas, formularios, búsquedas, paginación, exportaciones e interacciones preservando sus contratos funcionales y autorización.
 
 Cuando una acción todavía no esté migrada, puede mostrarse deshabilitada e inerte para preservar la fidelidad visual.
 
@@ -73,7 +73,7 @@ Usar CSS propio y JavaScript nativo cuando sean suficientes. No introducir Passp
 
 La base legacy actual es una **restricción temporal**, no el diseño objetivo de Laravel.
 
-Javi indicó que la base de datos será migrada y mejorada, incluyendo cambios de nombres de tablas y posiblemente de columnas. Es muy probable que desaparezca el prefijo `tbl_`; por ejemplo, `tbl_usuarios` probablemente pasará a `usuarios`. El esquema definitivo aún debe confirmarse.
+Dirección confirmada por el Ing. Javi: Laravel tendrá tablas nuevas con nombres limpios, preferentemente en español, migradas progresivamente por módulo mediante migrations y modelos con relaciones Eloquent apropiadas. Conservar los IDs legacy cuando sea viable e importar datos reales mediante procesos reproducibles; reservar seeders preferentemente para datos iniciales/configuración. El objetivo es abandonar las tablas `tbl_*` en la operación normal y terminar con una nueva tabla de usuarios, hashes modernos y Spatie. Los nombres, contratos y plan de transición concretos de cada módulo siguen pendientes; esta decisión no autoriza ejecutar migraciones/importaciones ni cambiar ahora SHA-1 o el esquema actual.
 
 Mientras se trabaja contra la BD legacy:
 
@@ -184,7 +184,7 @@ Antes de considerar terminado un módulo:
 
 - ejecutar sus pruebas específicas;
 - compilar Vite si cambian assets;
-- revisar visualmente la fidelidad con el legacy;
+- revisar visualmente la dirección de diseño vigente y la conservación de capacidades del legacy;
 - comprobar manualmente descargas o flujos externos cuando corresponda.
 
 La suite conserva pruebas scaffold que pueden no representar el sistema actual. No implementar funcionalidades ajenas al alcance solo para hacer pasar tests obsoletos; primero decidir si esos tests deben adaptarse, reemplazarse o eliminarse.

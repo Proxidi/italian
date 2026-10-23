@@ -224,13 +224,60 @@ if (shell) {
 const userMenu = document.querySelector('.user-menu');
 if (userMenu) {
     const trigger = userMenu.querySelector('summary');
-    userMenu.addEventListener('toggle', () => trigger.setAttribute('aria-expanded', String(userMenu.open)));
+    const content = userMenu.querySelector('.user-menu__content');
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let expanded = userMenu.open;
+    let animation;
+
+    trigger.setAttribute('aria-expanded', String(expanded));
+    content.inert = !expanded;
+
+    const setOpen = (shouldOpen) => {
+        if (expanded === shouldOpen) return;
+
+        // Capture an interrupted transition before cancelling it, so rapid
+        // open/close interactions continue from the current visual position.
+        const current = userMenu.open ? getComputedStyle(content) : null;
+        const from = current
+            ? { opacity: current.opacity, transform: current.transform }
+            : { opacity: 0, transform: 'translateY(-5px) scale(.98)' };
+        animation?.cancel();
+        expanded = shouldOpen;
+        trigger.setAttribute('aria-expanded', String(expanded));
+        if (!expanded && content.contains(document.activeElement)) trigger.focus();
+        content.inert = !expanded;
+        userMenu.open = true;
+
+        const finish = () => {
+            userMenu.open = expanded;
+            animation?.cancel();
+            animation = null;
+        };
+        if (reducedMotion.matches) {
+            finish();
+            return;
+        }
+
+        animation = content.animate([
+            from,
+            expanded
+                ? { opacity: 1, transform: 'translateY(0) scale(1)' }
+                : { opacity: 0, transform: 'translateY(-5px) scale(.98)' },
+        ], { duration: expanded ? 160 : 130, easing: 'ease-out', fill: 'both' });
+        animation.onfinish = finish;
+    };
+
+    trigger.addEventListener('click', event => {
+        event.preventDefault();
+        setOpen(!expanded);
+    });
     document.addEventListener('click', event => {
-        if (userMenu.open && !userMenu.contains(event.target)) userMenu.open = false;
+        if (!userMenu.contains(event.target)) setOpen(false);
     });
     document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && userMenu.open) {
-            userMenu.open = false;
+        if (event.key === 'Escape' && expanded) {
+            event.preventDefault();
+            setOpen(false);
             trigger.focus();
         }
     });
@@ -238,7 +285,10 @@ if (userMenu) {
         // During pointer focus changes, activeElement can briefly be body.
         // Use the destination so an internal button can receive its click/submit.
         if (event.relatedTarget && !userMenu.contains(event.relatedTarget)) {
-            userMenu.open = false;
+            setOpen(false);
         }
+    });
+    reducedMotion.addEventListener('change', () => {
+        if (reducedMotion.matches && animation) animation.finish();
     });
 }
