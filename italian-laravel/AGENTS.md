@@ -12,7 +12,9 @@ Las etapas 0/1 preparan conexiones y esquema/modelos del núcleo; la etapa 2 añ
 importadores con preflight y `--dry-run`. La etapa 3 activa `Usuario` como proveedor
 Eloquent, el rehash progresivo y Usuarios/bitácora/Inicio sobre tablas nuevas.
 El responsable reporta la importación local; no confundirla con nuestras pruebas
-sintéticas. Configurar y Productos conservan persistencia pendiente. El bootstrap inicial de Spatie
+sintéticas. La etapa 4 adapta Configurar a `configuracion_corte_dlc` y
+`configuracion_notificaciones`, con importación global atómica, sin sobrescribir
+configuraciones operativas. Productos conserva persistencia pendiente. El bootstrap inicial de Spatie
 usa un marcador; no restablecer permisos operativos al repetir seeders.
 Principal: `italian_laravel`; `legacy`: fuente `italian` de solo lectura para
 importadores. No usar la conexión `legacy` desde controladores ni ejecutar sobre

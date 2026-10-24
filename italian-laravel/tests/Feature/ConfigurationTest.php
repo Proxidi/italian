@@ -36,21 +36,8 @@ class ConfigurationTest extends TestCase
         $this->app->forgetInstance(PermissionRegistrar::class);
         $this->withoutVite();
 
-        Schema::create('tbl_plazas', function (Blueprint $table): void {
-            $table->increments('id');
-            $table->string('Nombre');
-        });
         $this->createNativeCoreSchema();
-        Schema::create('tbl_rango_archivos', function (Blueprint $table): void {
-            $table->tinyIncrements('id');
-            $table->tinyInteger('Numero_Dias');
-            $table->string('Descripcion', 50);
-        });
-        Schema::create('tbl_notificaciones', function (Blueprint $table): void {
-            $table->tinyIncrements('id');
-            $table->date('Fecha');
-            $table->string('Descripcion', 50);
-        });
+        (require database_path('migrations/2026_10_24_000001_create_configuration_tables.php'))->up();
         foreach (['roles', 'permissions'] as $name) {
             Schema::create($name, function (Blueprint $table): void {
                 $table->bigIncrements('id');
@@ -74,9 +61,8 @@ class ConfigurationTest extends TestCase
             $table->primary(['permission_id', 'role_id']);
         });
 
-        DB::table('tbl_plazas')->insert(['id' => 1, 'Nombre' => 'Plaza sintética']);
-        DB::table('tbl_rango_archivos')->insert(['id' => 1, 'Numero_Dias' => 1, 'Descripcion' => 'Rango de Fechas para DLC & Corte atrasados']);
-        DB::table('tbl_notificaciones')->insert(['id' => 1, 'Fecha' => '2019-01-01', 'Descripcion' => 'Sistema de Notificaciones Corte y DLC']);
+        DB::table('configuracion_corte_dlc')->insert(['id' => 1, 'numero_dias' => 1, 'descripcion' => 'Rango de Fechas para DLC & Corte atrasados']);
+        DB::table('configuracion_notificaciones')->insert(['id' => 1, 'fecha_inicial' => '2019-01-01', 'descripcion' => 'Sistema de Notificaciones Corte y DLC']);
         foreach (['superadmin', 'admin', 'root', 'submanager', 'socio'] as $role) {
             Role::findOrCreate($role, 'web');
         }
@@ -97,8 +83,8 @@ class ConfigurationTest extends TestCase
     private function snapshot(): array
     {
         return [
-            DB::table('tbl_rango_archivos')->orderBy('id')->get()->toJson(),
-            DB::table('tbl_notificaciones')->orderBy('id')->get()->toJson(),
+            DB::table('configuracion_corte_dlc')->orderBy('id')->get()->toJson(),
+            DB::table('configuracion_notificaciones')->orderBy('id')->get()->toJson(),
         ];
     }
 
@@ -199,12 +185,12 @@ class ConfigurationTest extends TestCase
         $this->actingAs($this->actor(), 'web');
         foreach ([127, 1] as $days) {
             $this->put(route('configuration.dates.update'), [
-                'setting_id' => 1, 'numero_dias_valor' => $days, 'Descripcion' => 'No modificar', 'Fecha' => '2000-01-01',
+                'setting_id' => 1, 'numero_dias_valor' => $days, 'descripcion' => 'No modificar', 'fecha_inicial' => '2000-01-01',
             ])->assertRedirect(route('configuration.dates'))->assertSessionHas('configuration-success');
-            $this->assertDatabaseHas('tbl_rango_archivos', ['id' => 1, 'Numero_Dias' => $days, 'Descripcion' => 'Rango de Fechas para DLC & Corte atrasados']);
+            $this->assertDatabaseHas('configuracion_corte_dlc', ['id' => 1, 'numero_dias' => $days, 'descripcion' => 'Rango de Fechas para DLC & Corte atrasados']);
         }
-        $this->assertDatabaseCount('tbl_rango_archivos', 1);
-        $this->assertDatabaseHas('tbl_notificaciones', ['Fecha' => '2019-01-01']);
+        $this->assertDatabaseCount('configuracion_corte_dlc', 1);
+        $this->assertDatabaseHas('configuracion_notificaciones', ['fecha_inicial' => '2019-01-01']);
     }
 
     public function test_update_permission_alone_does_not_allow_access_without_subpage_read_permission(): void
@@ -239,12 +225,12 @@ class ConfigurationTest extends TestCase
     {
         $this->actingAs($this->actor(), 'web');
         foreach (['1000-01-01', '2024-02-29', '9999-12-31'] as $date) {
-            $this->put(route('configuration.notifications.update'), ['setting_id' => 1, 'fecha' => $date, 'Descripcion' => 'No cambiar'])
+            $this->put(route('configuration.notifications.update'), ['setting_id' => 1, 'fecha' => $date, 'descripcion' => 'No cambiar'])
                 ->assertRedirect(route('configuration.notifications'))->assertSessionHas('configuration-success');
-            $this->assertDatabaseHas('tbl_notificaciones', ['id' => 1, 'Fecha' => $date, 'Descripcion' => 'Sistema de Notificaciones Corte y DLC']);
+            $this->assertDatabaseHas('configuracion_notificaciones', ['id' => 1, 'fecha_inicial' => $date, 'descripcion' => 'Sistema de Notificaciones Corte y DLC']);
         }
-        $this->assertDatabaseCount('tbl_notificaciones', 1);
-        $this->assertDatabaseHas('tbl_rango_archivos', ['Numero_Dias' => 1]);
+        $this->assertDatabaseCount('configuracion_notificaciones', 1);
+        $this->assertDatabaseHas('configuracion_corte_dlc', ['numero_dias' => 1]);
     }
 
     public function test_invalid_notification_dates_never_write(): void
@@ -260,8 +246,8 @@ class ConfigurationTest extends TestCase
 
     public static function sections(): array
     {
-        return [['dates', 'tbl_rango_archivos', ['Numero_Dias' => 5, 'Descripcion' => 'Otro rango'], ['numero_dias_valor' => 10]],
-            ['notifications', 'tbl_notificaciones', ['Fecha' => '2020-01-01', 'Descripcion' => 'Otro aviso'], ['fecha' => '2026-10-17']]];
+        return [['dates', 'configuracion_corte_dlc', ['numero_dias' => 5, 'descripcion' => 'Otro rango'], ['numero_dias_valor' => 10]],
+            ['notifications', 'configuracion_notificaciones', ['fecha_inicial' => '2020-01-01', 'descripcion' => 'Otro aviso'], ['fecha' => '2026-10-17']]];
     }
 
     #[DataProvider('sections')]
@@ -304,9 +290,9 @@ class ConfigurationTest extends TestCase
     public function test_exports_keep_all_filtered_rows_order_headers_and_formula_safety(): void
     {
         $this->actingAs($this->actor(), 'web');
-        DB::table('tbl_notificaciones')->insert([
-            ['id' => 2, 'Fecha' => '2026-10-17', 'Descripcion' => '=FORMULA'],
-            ['id' => 3, 'Fecha' => '2026-10-17', 'Descripcion' => '<script>literal</script>'],
+        DB::table('configuracion_notificaciones')->insert([
+            ['id' => 2, 'fecha_inicial' => '2026-10-17', 'descripcion' => '=FORMULA'],
+            ['id' => 3, 'fecha_inicial' => '2026-10-17', 'descripcion' => '<script>literal</script>'],
         ]);
         $before = $this->snapshot();
         $response = $this->get(route('configuration.notifications.export', [
@@ -347,7 +333,7 @@ class ConfigurationTest extends TestCase
     {
         $this->actingAs($this->actor(), 'web');
         for ($id = 2; $id <= 85; $id++) {
-            DB::table('tbl_notificaciones')->insert(['id' => $id, 'Fecha' => '2026-10-17', 'Descripcion' => 'Aviso '.$id]);
+            DB::table('configuracion_notificaciones')->insert(['id' => $id, 'fecha_inicial' => '2026-10-17', 'descripcion' => 'Aviso '.$id]);
         }
         $before = $this->snapshot();
         $this->get(route('configuration.notifications', ['page' => 2, 'sort' => 'id', 'direction' => 'asc']))

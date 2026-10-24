@@ -1,5 +1,163 @@
 # Contexto de migración — CodeIgniter a Laravel
 
+## BD nueva — etapa 4: Configurar (2026-10-23)
+
+Implementada en `migracion-bd`, sin importar datos reales ni ejecutar sobre bases
+persistentes. Configurar ya opera con tablas nativas; Productos sigue pendiente.
+Esta sección reemplaza las indicaciones anteriores de persistencia legacy para
+Configurar, que se conservan como antecedentes históricos.
+
+### Correspondencia comprobada
+
+| Concepto | Origen | Destino / transformación |
+| --- | --- | --- |
+| Corte & DLC | `tbl_rango_archivos.Numero_Dias` | `configuracion_corte_dlc.numero_dias`, entero 1–127 |
+| Descripción Corte | `tbl_rango_archivos.Descripcion` | `configuracion_corte_dlc.descripcion`, texto exacto hasta 50 caracteres |
+| Fecha inicial | `tbl_notificaciones.Fecha` | `configuracion_notificaciones.fecha_inicial`, DATE exacta 1000-01-01 a 9999-12-31 |
+| Descripción Notificaciones | `tbl_notificaciones.Descripcion` | `configuracion_notificaciones.descripcion`, texto exacto hasta 50 caracteres |
+| IDs globales | PK tinyint sin consumidores relacionales encontrados | PK bigint autoincrement; al importar una tabla vacía se usa 1; no se preserva un ID sin significado de negocio |
+
+Migration: `2026_10_24_000001_create_configuration_tables.php`. Ambas tablas tienen
+solo `id`, su valor y `descripcion`; no timestamps ficticios ni seed de valores.
+La fecha del nombre de migration corresponde a UTC. El dump inspeccionado contiene
+una fila en cada origen: días 1 y fecha 2019-01-01. Eso no verifica la BD local del
+responsable ni se utiliza para inventar defaults. Notificaciones usa latin1 en el
+dump; rango usa utf8mb3. La conexión negociada utf8mb4 realiza conversión y se
+rechazan textos inválidos, sin reparar automáticamente mojibake histórico.
+
+Se conserva deliberadamente la defensa de cardinalidad de la implementación
+anterior: no hay endpoint de alta/baja; lectura/listado permite diagnosticar cero
+o varias filas y deshabilita la edición; escritura transaccional bloquea y exige
+exactamente una fila y el mismo ID enviado. La BD no impone cardinalidad singleton
+ni CHECK 1–127: las validaciones del módulo, servicio e importador preservan esa
+regla. Escrituras manuales externas deben respetarla; nunca elegir primera fila
+de una configuración ambigua. No existen FKs porque son configuraciones globales.
+
+### Acceso operativo e interfaz
+
+Se reutiliza `App\Queries\ConfigurationSettings`, sin agregar modelos redundantes
+para estas consultas simples. Expone `uploadWindowDays(): int` y
+`notificationStartDate(): string` para futuros consumidores; rechaza ausencia,
+ambigüedad o valores inválidos en lugar de inventar un fallback. Las actualizaciones
+validan y guardan solo el valor, conservando descripción. Usa la conexión principal,
+sin referencia operativa a las tablas origen ni a la conexión `legacy`.
+
+El mapping de SELECT conserva los alias `Numero_Dias`, `Fecha`, `Descripcion`
+exclusivamente como contrato de las vistas/exportaciones/ordenamiento existentes;
+no son columnas físicas nuevas ni consultas al legacy. Se mantienen rutas,
+formularios, rangos de fecha/días, filtros, exportaciones XLSX/PDF/Copy, CSRF,
+animación de éxito y diseño. Los cinco permisos de Configurar, su matriz efectiva
+y concesiones/revocaciones no cambian; no se ejecuta bootstrap ni seed de roles.
+
+### Importación reproducible
+
+Comandos definitivos:
+
+```bash
+./vendor/bin/sail artisan legacy:validar-configuracion
+./vendor/bin/sail artisan legacy:importar-configuracion --dry-run
+./vendor/bin/sail artisan legacy:importar-configuracion
+```
+
+`ConfigurationImporter` reutiliza `ImportConnections::check`: origen `legacy`
+MySQL italian, destino `mysql` italian_laravel, cuentas y bases efectivas distintas,
+SELECT/USAGE directos sin roles activos/grant option, charset utf8mb4, destino
+estricto y FKs activas. Las excepciones de BD no imprimen SQL/bindings. No usa caché
+de permisos ni bootstrap. La validación y dry-run solo ejecutan SELECT/SHOW; no
+BEGIN, INSERT, UPDATE, contadores ni cache flush.
+
+Prevalida ambas tablas origen/destino antes de escribir. Cero/múltiples filas en
+origen, valores nulos/fuera de rango, fechas imposibles/formato incompatible y
+descripciones inválidas rechazan todo el conjunto. En destino vacío propone una
+fila; idéntico omite; cualquier diferencia o multiplicidad es conflicto y no se
+sobrescribe. Mensajes por tabla indican pendiente/importado/omitido; error indica
+la tabla y causa sin escoger ni normalizar filas arbitrariamente.
+
+La ejecución real vuelve a comprobar origen y destino bajo transacción destino
+y bloqueo, inserta ambas configuraciones atómicamente y revierte si hay error.
+Una interrupción no deja media importación confirmada. Un destino parcialmente
+poblado con valores idénticos se puede completar; si difiere, se rechaza. ID fijo 1
+protege contra duplicados entre importaciones concurrentes a tablas vacías; un
+deadlock/conflicto concurrente revierte y se puede repetir. No bloquea ni escribe
+el origen: la importación requiere una ventana sin cambios en CodeIgniter; una
+modificación de origen posterior a la comprobación final quedará detectable en
+la siguiente validación, no se sincroniza automáticamente. Tampoco es un sistema
+de sincronización continua: después de editar en Laravel, una diferencia con CI
+es un conflicto esperado que protege el valor operativo. No hay sello histórico
+de importación: si alguien borra manualmente una fila, el comando podrá proponer
+reponerla desde el origen, previa validación explícita.
+
+### Contratos futuros, sin migrar consumidores
+
+- `Mdl_opciones::getNumeroDias()` devuelve primera fila como Dias.
+  `Ventas::store2()` comprueba su existencia pero fuerza 30 días (sin fila, 1),
+  en vez de usar el valor. No se corrige ni legitima esta discrepancia: Javi debe
+  definir la regla al migrar Ventas.
+- `Inventario::fechaCorrecta()` calcula fecha con Dias (fallback 1), sin comparación
+  efectiva ni llamadas identificadas. No se promete un límite DLC ya funcional.
+- `Mdl_usuarios::getFechaCorte()` → `Inicio::reasignar()` →
+  `Mdl_ventas::getErroresVentas/Plazas`: `tbl_envio_cortes`, Fecha >= fecha inicial,
+  Fecha <= hoy, Enviado=0, por plaza cuando corresponde. Esta es una frontera
+  temporal para cortes faltantes, no un generador de avisos. El recorrido también
+  consulta `Mdl_inventario::getErroresDLC()` (Correcto=0), pero ese método NO recibe
+  la fecha inicial; no debe inventarse ese filtro. La redacción antigua que sugiere
+  que la fecha limita todos los avisos de cortes/DLC era demasiado amplia.
+- Los futuros consumidores deberán usar los getters nativos anteriores y migrar
+  sus propias tablas; ninguna de esas funciones se activa aquí. Login/Inicio
+  conservan el desacoplamiento etapa 3; bienvenida y mock siguen siendo demos.
+  CodeIgniter continúa usando sus valores originales: editar Laravel ya no lo
+  actualiza, porque las bases son independientes.
+
+### Aplicación local y límites
+
+Verificar rama, respaldo del destino y configuración efectiva de mysql/legacy,
+sin cambiar credenciales. Ejecutar en orden:
+
+```bash
+./vendor/bin/sail artisan config:clear
+./vendor/bin/sail artisan migrate:status
+./vendor/bin/sail artisan migrate --pretend
+./vendor/bin/sail artisan migrate --force
+./vendor/bin/sail artisan legacy:validar-configuracion
+./vendor/bin/sail artisan legacy:importar-configuracion --dry-run
+./vendor/bin/sail artisan legacy:importar-configuracion
+./vendor/bin/sail artisan legacy:validar-configuracion
+```
+
+Revisar el listado de migrations antes de aplicar: esta etapa añade solo la
+migration de Configurar; no ejecutar fresh/wipe, seeders ni reimportar el núcleo.
+Luego comprobar con Gerente las dos lecturas, guardados y exportaciones; con otro
+rol, denegación según permisos efectivos. No hay cambios de assets ni de .env.
+Si el checkout conserva un manifest Vite antiguo (se observó esa condición en el
+entorno de pruebas), ejecutar `npm run build` para regenerar los assets actuales.
+Después de modificar valores en Laravel, no se espera igualdad con el origen.
+Productos/Insumos/Fórmulas/Costo de Venta siguen pendientes de adaptación de BD;
+las pruebas de sus tablas sintéticas legacy no equivalen a haberlos migrado.
+
+### Validación de esta intervención
+
+Fixtures sintéticos, PHP 8.5.11, SQLite en memoria y MySQL 8.4 descartable sin red
+externa. No se consultaron ni importaron bases reales. Pruebas nuevas:
+`ConfigurationImportTest` y `NativeConfigurationTest`; se adapta
+`ConfigurationTest` a la migration real. Incluyen dry-run SELECT/SHOW, idempotencia,
+conflictos, fuente inválida/vacía/múltiple, destino parcial/ambiguo, rollback por
+interrupción, reintento MySQL, descripciones, fechas/rango, getters, CSRF y núcleo
+sin conexión legacy. Regresión conserva permisos de los cinco roles, exports,
+fallback HTTP, filtros, cardinalidad y presentación. Resultados: SQLite Configurar
++ importador + contrato nativo: 32 pruebas / 423 aserciones; MySQL específicos
+finales: 10 / 276. Regresión MySQL núcleo/autenticación/importadores etapa 2:
+ejecución conjunta previa a añadir el último caso de destino ambiguo, 76 / 5579.
+Regresión SQLite Usuarios/Configurar/Medidas/Insumos/Productos/Costo de Venta:
+205 / 1604. Son ejecuciones superpuestas, no sumarlas como pruebas únicas.
+Pint y `git diff --check` correctos.
+
+Chromium real: 1366 y 390 px, login con fixture, bienvenida y demo, panel de
+Configurar, abrir diálogo, guardar días y fecha inicial, lectura posterior,
+feedback y ausencia de overflow horizontal/errores JS. Se usó un build temporal
+ya compilado de los mismos assets, sin alterar public/build del repositorio.
+Capturas temporales `stage04-corte-*` y `stage04-notificaciones-*` en /tmp.
+No confundir estos resultados con verificación local sobre datos reales.
+
 ## 1. Alcance, evidencia y prioridad
 
 Base: auditoría estática de `9d7b44df`; actualizada tras incorporar por fast-forward
