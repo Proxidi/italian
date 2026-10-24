@@ -6,15 +6,15 @@
         <dialog class="products-dialog catalog-dialog formula-dialog" data-formula-dialog data-return-url="{{ route('products.catalog.index', $filters) }}" aria-labelledby="formula-title">
             <header><h2 id="formula-title">Fórmula del Producto</h2><button type="button" data-close-formulas aria-label="Cerrar">×</button></header>
             <div class="ingredients-conversions-body">
-                <p>{{ $product->Nombre }}</p>
+                <p>{{ $product->nombre }}</p>
                 @can('products.formulas.create')<button class="products-button products-button--blue" type="button" data-add-formula>✚ Agregar Fórmula</button>@endcan
                 <x-ui.listing label="Composición de la fórmula" class="formula-list">
                 <x-ui.table label="Fórmula del Producto">
                     <x-slot:head><th scope="col">Nombre</th><th scope="col">Insumo</th><th scope="col">Cantidad</th><th scope="col">Unidad</th><th scope="col">Editar</th><th scope="col">Eliminar</th></x-slot:head>
                     @forelse($lines as $line)
-                        <tr><td>{{ $product->Nombre }}</td><td>{{ $line->ingredient?->Nombre ?? 'Insumo inexistente (ID '.$line->insumo_id.')' }}</td><td>{{ $line->Cantidad }}</td><td>{{ $line->ingredient?->initialUnit?->Nombre ?? 'Unidad inexistente' }}</td>
+                        <tr><td>{{ $product->nombre }}</td><td>{{ $line->ingredient?->nombre ?? 'Insumo inexistente (ID '.$line->insumo_id.')' }}</td><td>{{ \App\Rules\ExactProductDecimal::display($line->cantidad) }}</td><td>{{ $line->ingredient?->initialUnit?->nombre ?? 'Unidad inexistente' }}</td>
                             <td>@if($line->editable && auth('web')->user()->can('products.formulas.update'))
-                                <x-ui.table-action color="cyan" data-edit-formula :href="route('products.formulas.edit', ['product' => $product->id, 'formula' => $line->id, ...$filters])" data-action="{{ route('products.formulas.update', ['product' => $product->id, 'formula' => $line->id]) }}" data-quantity="{{ $line->Cantidad }}" data-ingredient="{{ $line->ingredient->Nombre }}" data-unit="{{ $line->ingredient->unidad_id }}" aria-label="Editar cantidad de {{ $line->ingredient->Nombre }}" />
+                                <x-ui.table-action color="cyan" data-edit-formula :href="route('products.formulas.edit', ['product' => $product->id, 'formula' => $line->id, ...$filters])" data-action="{{ route('products.formulas.update', ['product' => $product->id, 'formula' => $line->id]) }}" data-quantity="{{ \App\Rules\ExactProductDecimal::display($line->cantidad) }}" data-ingredient="{{ $line->ingredient->nombre }}" data-unit="{{ $line->ingredient->unidad_id }}" aria-label="Editar cantidad de {{ $line->ingredient->nombre }}" />
                             @else<span>{{ $line->editable ? 'Sin permiso' : 'Relación inconsistente: requiere revisión' }}</span>@endif</td>
                             <td><x-ui.table-action color="red" icon="delete" disabled aria-label="Eliminar fórmula pendiente de decisión" /></td>
                         </tr>
@@ -34,23 +34,23 @@
                         @csrf @if($isEdit) @method('PUT') @endif
                         @foreach($filters as $key => $value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach
                         <div class="ui-list__errors" data-catalog-errors role="alert" tabindex="-1" @if(!$errors->any()) hidden @endif>{{ implode(' ', $errors->all()) }}</div>
-                        <div class="products-field"><label>Producto:</label><input class="products-input" value="{{ $product->Nombre }}" readonly aria-label="Producto de la fórmula"></div>
+                        <div class="products-field"><label>Producto:</label><input class="products-input" value="{{ $product->nombre }}" readonly aria-label="Producto de la fórmula"></div>
                         <div class="products-field"><label for="formula-{{ $operation }}-ingredient">Insumo:</label>
-                            @if($isEdit)<input class="products-input" data-formula-ingredient id="formula-update-ingredient" readonly value="{{ $editing?->ingredient?->Nombre }}">
+                            @if($isEdit)<input class="products-input" data-formula-ingredient id="formula-update-ingredient" readonly value="{{ $editing?->ingredient?->nombre }}">
                             @else<select class="products-input" name="insumo_id" id="formula-create-ingredient" data-formula-picker required>
                                 <option value="">Selecciona un insumo</option>
-                                @foreach($ingredients as $ingredient)<option value="{{ $ingredient->id }}" data-unit="{{ $ingredient->unidad_id }}" data-unit-name="{{ $ingredient->initialUnit->Nombre }}" @selected((string)old('insumo_id') === (string)$ingredient->id)>{{ $ingredient->Nombre }}</option>@endforeach
+                                @foreach($ingredients as $ingredient)<option value="{{ $ingredient->id }}" data-unit="{{ $ingredient->unidad_id }}" data-unit-name="{{ $ingredient->initialUnit->nombre }}" @selected((string)old('insumo_id') === (string)$ingredient->id)>{{ $ingredient->nombre }}</option>@endforeach
                             </select>@endif
                         </div>
                         @if(!$isEdit && $ingredients->isEmpty())<p class="ui-list__errors" role="status">No hay insumos de producción con los catálogos necesarios para agregar una fórmula.</p>@endif
-                        <div class="products-field"><label for="formula-{{ $operation }}-quantity">Cantidad:</label><input class="products-input" type="number" name="cantidad" id="formula-{{ $operation }}-quantity" step="any" min="0" required value="{{ old('cantidad', $isEdit ? $editing?->Cantidad : '') }}"></div>
+                        <div class="products-field"><label for="formula-{{ $operation }}-quantity">Cantidad:</label><input class="products-input" type="number" name="cantidad" id="formula-{{ $operation }}-quantity" step="any" min="0" required value="{{ old('cantidad', $isEdit && $editing ? \App\Rules\ExactProductDecimal::display($editing->cantidad) : '') }}"></div>
                         @if($isEdit)
                             <input type="hidden" name="unit_id" value="{{ $editing?->ingredient?->unidad_id }}">
                         @else
                             <div class="products-field"><label for="formula-create-unit">Unidad:</label>
                                 <select class="products-input" name="unit_id" id="formula-create-unit" data-formula-unit required aria-describedby="formula-unit-help">
                                     <option value="">Unidad del insumo</option>
-                                    @foreach($ingredients->unique('unidad_id') as $ingredient)<option value="{{ $ingredient->unidad_id }}" @selected((string)old('unit_id') === (string)$ingredient->unidad_id)>{{ $ingredient->initialUnit->Nombre }}</option>@endforeach
+                                    @foreach($ingredients->unique('unidad_id') as $ingredient)<option value="{{ $ingredient->unidad_id }}" @selected((string)old('unit_id') === (string)$ingredient->unidad_id)>{{ $ingredient->initialUnit->nombre }}</option>@endforeach
                                 </select>
                                 <small id="formula-unit-help" class="ingredients-field-help">Debe coincidir con la unidad del insumo; no convierte cantidades.</small>
                             </div>

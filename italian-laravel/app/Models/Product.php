@@ -8,11 +8,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
-    protected $table = 'tbl_productos';
+    protected $table = 'productos';
 
     public $timestamps = false;
 
-    protected $fillable = ['Nombre', 'Clave', 'familia_id', 'Estado'];
+    protected $fillable = ['nombre', 'clave', 'familia_id', 'estado'];
 
     public function family(): BelongsTo
     {

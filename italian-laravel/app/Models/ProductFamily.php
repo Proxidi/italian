@@ -3,12 +3,18 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductFamily extends Model
 {
-    protected $table = 'tbl_familia_productos';
+    protected $table = 'familias_productos';
 
     public $timestamps = false;
 
     protected $guarded = ['*'];
+
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class, 'familia_id');
+    }
 }

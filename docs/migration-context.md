@@ -1,5 +1,285 @@
 # Contexto de migración — CodeIgniter a Laravel
 
+## BD nueva — etapa 5: persistencia de Productos (2026-10-23)
+
+Trabajo local en `migracion-bd`. No implica importación de datos reales ni avance a
+Gastos/Remesas/Pedidos/Inventario/Ventas. Sustituye las indicaciones de persistencia
+legacy de Productos en secciones históricas posteriores. Núcleo y Configurar
+siguen en sus esquemas nativos.
+
+### Auditoría dirigida y correspondencia
+
+Se revisaron Productos/Medidas/Formulas/Insumos, Mdl_productos/Mdl_formulas,
+vistas invocadas, consultas de conversión y costos y las definiciones/inserts del
+dump exclusivamente para las tablas involucradas. `Medidas::index` solo lista;
+`Productos::actualizarUnidad` renombra `tbl_unidades` por ID; la única llamada de
+vista encontrada es productos/unidades/list. No modifica conversiones ni cantidades.
+Laravel ya tenía POST de alta de Medidas con permiso y pruebas: se conserva como
+capacidad preexistente, no se añade una operación en esta etapa. Si el equipo
+pretende retirarla, eso requiere una decisión posterior explícita.
+
+| Origen | Destino | Filas en el dump disponible | AUTO_INCREMENT del dump |
+| --- | --- | ---: | ---: |
+| tbl_unidades | medidas | 49 | 52 |
+| tbl_categorias_insumos | categorias_insumos | 3 | 4 |
+| tbl_familia_productos | familias_productos | 13 | 14 |
+| tbl_insumos | insumos | 267 | 270 |
+| tbl_insumos_inventario | conversiones_insumos | 264 | 265 |
+| tbl_productos | productos | 431 | 432 |
+| tbl_productos_insumos | productos_insumos | 2562 | 2647 |
+
+Son conteos estáticos del dump, no de la BD local/producción. Los importadores
+calculan los conteos y secuencias efectivos. No se cargó el dump a ninguna BD.
+Los IDs se conservan sin renumeración; PK destino BIGINT UNSIGNED compatible con
+las FKs nuevas. Origen usa INT firmado para estas PK; se validan IDs positivos
+hasta 2147483647. No se reutilizan los huecos históricos por debajo del siguiente
+AUTO_INCREMENT del origen. Se usa utf8mb4 del destino, sin cambiar su collation.
+
+Mapping de columnas (las no mencionadas como renombradas conservan su nombre):
+
+| Tabla destino | Columnas y tipos nativos | Origen / transformación |
+| --- | --- | --- |
+| medidas | id PK, nombre VARCHAR(50) | id, Nombre; no UNIQUE de nombre nuevo |
+| categorias_insumos | id PK, nombre VARCHAR(50) | id, Nombre; sin unicidad inventada |
+| familias_productos | id PK, nombre VARCHAR(50) UNIQUE | id, Nombre; conserva unicidad original |
+| insumos | id PK, nombre VARCHAR(100), clave_pedido VARCHAR(45), categorias_insumos_id, unidad_id, unidad_pedido, unidad_final BIGINT FK; inv_produccion, inv_fisico, pedido, pedido_pasteleria, analisis_cv TINYINT firmado; categoria_pedido_id SMALLINT, categoria_quebranto_id TINYINT, costo_venta DECIMAL(65,24), orden_captura_inventario SMALLINT | Nombre→nombre; Pedido_Pasteleria→pedido_pasteleria; Analisis_CV→analisis_cv; Costo_Venta→costo_venta; Orden_Captura_Inventario→orden_captura_inventario; demás columnas conservadas |
+| conversiones_insumos | id PK, insumo_id FK, nombre VARCHAR(150), bodega/piso VARCHAR(200), total/dlc/pedido VARCHAR(50), cvi/cvg VARCHAR(20) | Nombre/Bodega/Piso/Total/DLC/Pedido/CVI/CVG a minúsculas; expresiones originales exactas, sin ejecutar ni reescribir |
+| productos | id PK, nombre VARCHAR(100) UNIQUE, clave VARCHAR(50) UNIQUE, familia_id FK, estado TINYINT firmado | Nombre/Clave/Estado a minúsculas; estado de alta sigue siendo 1 |
+| productos_insumos | id PK, producto_id FK, insumo_id FK, cantidad DECIMAL(65,24) | Cantidad→cantidad; no unidad propia ni cabecera/versionado inventados |
+
+Migration `2026_10_24_000002_create_product_catalog_tables.php`. Sin fechas
+inventadas ni timestamps de negocio. Todas las FKs nuevas bloquean borrado,
+sin cascadas: insumos→categorias_insumos/medidas (tres unidades), conversiones→
+insumos, productos→familias, componentes→producto/insumo. Índices de FKs e índice
+compuesto producto_id/insumo_id apoyan joins y búsqueda de duplicados.
+
+No se añade UNIQUE al par de fórmula ni a conversiones.insumo_id: el dump tiene
+seis pares de componentes repetidos y seis cantidades cero. Se conservan filas,
+IDs y cantidades; escritores bloquean el padre y rechazan agregar duplicados o
+editar pares ambiguos. Tampoco se deducen recetas nuevas ni se fusionan filas.
+`categoria_pedido_id` y `categoria_quebranto_id` son referencias escalares externas
+conservadas para los módulos futuros; NO se finge que sus catálogos ya estén
+migrados ni se agregan FKs a tablas inexistentes. Sus relaciones se resolverán
+cuando se migren esos catálogos. Mantener estos datos evita pérdida histórica.
+
+### Precisión y modelos
+
+Se reutilizan los siete modelos existentes con tablas/atributos nativos:
+MeasurementUnit, IngredientCategory, ProductFamily, Ingredient,
+IngredientConversion, Product y ProductIngredient. Relaciones Eloquent explícitas
+en ambos sentidos para familias, categorías, unidad inicial, conversiones y
+componentes; las tres unidades del insumo son belongsTo. ProductIngredient es un
+modelo propio con ID histórico, no un pivot sin identidad.
+
+ExactProductDecimal usa Brick Math ya instalado transitivamente (no se cambian
+dependencias). Normaliza hasta 41 dígitos enteros/24 decimales exactamente,
+incluyendo notación científica; rechaza overflow o necesidad de redondear. El
+importador hace CAST AS CHAR en MySQL para FLOAT/DOUBLE antes de traerlos a PHP:
+preserva su representación decimal del servidor, evitando truncamiento por
+conversión intermedia PHP float→string. No pretende recuperar dígitos inexistentes
+en el FLOAT histórico. Se verifican 7.7, 153.12 y 0.10000000000000002 con fixtures.
+Valores incompatibles bloquean el conjunto; no se redondean para forzar importación.
+Los casts de modelos son decimal:24. La presentación de cantidades/input elimina
+solo ceros fraccionales finales; costo visible conserva dos decimales como antes.
+
+SQLite NUMERIC utiliza floats internamente: las pruebas funcionales allí no
+acreditan almacenamiento decimal exacto. La conservación exacta se comprueba en
+MySQL 8.4. Cantidad operativa mantiene min=0, cero válido; costo mantiene negativos
+finitos como permitía la regla anterior. La antigua barrera técnica FLOAT de
+cantidades se sustituye por los límites exactos de DECIMAL, sin sumar una regla
+de negocio. La importación preserva cantidades históricas numéricas sin imponer
+restricciones de edición retroactivamente.
+
+### Estado funcional y referencias operativas
+
+Medidas conserva listado/alta/renombrado, Insumos listado y edición Bodega/Pedido,
+Productos listado/alta y Fórmulas consulta/alta/edición de cantidad. Generalizar
+edición/estado de productos no forma parte del recorrido conectado y sigue
+pendiente. Alta rota de Insumos, bajas de entidades/componentes y soft deletes
+siguen sin implementarse. Las conversiones restantes se conservan para futuros
+consumidores; esta etapa no activa inventarios ni evalúa expresiones nuevas.
+
+ProductsListing, IngredientsListing, CostOfSale, controladores y Form Requests
+usan tablas/columnas nativas; se conservan alias Nombre/Clave/Estado/Familia/Cost
+como contrato de listados, HTTP sort y exportaciones, sin columnas físicas legacy.
+Blade lee atributos nativos en modelos. No se mantienen modelos autenticables
+paralelos ni un segundo conjunto de tablas de Productos.
+
+Costo Pedido selecciona analisis_cv=1 AND (pedido=1 OR pedido_pasteleria=1), lee y
+edita únicamente insumos.costo_venta. No calcula recetas, rendimiento o inventario.
+No escribe Gastos/Pedidos ni actualiza históricos; el precio continúa siendo
+actual, sin vigencia. Rutas, permisos, AJAX/fetch, fallback HTTP, History API,
+listados/exportaciones XLSX/PDF/Copy, formularios, modales y feedback se preservan.
+No se cambian CSS/JS, el shell ni el catálogo/matriz efectiva Spatie; no bootstrap.
+
+Clasificación residual: nombres tbl_* de las siete tablas solo pertenecen al
+mapping del importador y a fixtures/documentación. Los consumidores PHP activos
+de Productos ya no dependen de esas tablas ni de la conexión legacy. Los tbl_*
+externos en pruebas representan snapshots de módulos todavía no migrados.
+
+### Remesas y etapa 6: pendiente controlado
+
+El radio, la ruta, filtros de fecha/plaza y permisos de Remesas se conservan.
+Al seleccionarlo se explica que falta migrar Gastos (etapa 6); no se muestran
+filas ni costos ni un falso cero. No ejecuta SQL contra Gastos/legacy. PUT con
+mode=remittances se deniega y no modifica costo Pedido. El listado vuelve a
+Pedido mediante el mismo fetch/HTTP. La consulta está explícitamente suspendida,
+no eliminada como regla de negocio.
+
+Contrato a reactivar: insumos analisis_cv=1, pedido=0 y pedido_pasteleria=0,
+cruzados con plazas nativas; semana lunes–domingo inclusiva. Relación histórica
+tbl_gastos.insumo_gasto_id→tbl_insumos_gastos.id→insumo_id. SUM(Importe)/SUM(Cantidad)
+por plaza e insumo (ejemplo 100/2 y 90/3 ⇒ 190/5 = 38), sin filtro Estado ni
+conversión de unidades en el código comprobado. Sin compras mostraba cero; importe
+con denominador cero era no calculable en Laravel. Estos casos no se simulan ahora.
+No se debe sustituir ese cociente por insumos.costo_venta.
+
+El dump tiene 183 tbl_insumos_gastos y 135223 tbl_gastos, pendientes de migración.
+Además del nuevo insumo con ID preservado, Gastos requiere usuarios/plazas ya
+nativos y catálogos aún externos: tbl_grupo_gastos, tbl_grupos_roles,
+tbl_unidades_pago; insumos_gastos también referencia unidad_id a medidas. Sus
+stocks, banderas, folios, archivos, fechas, cantidades e importes requieren diseño
+de etapa 6; no se migra aquí ese historial ni se inventan tablas puente vacías.
+La reactivación requiere adaptar CostOfSale::query para agregación sobre las
+tablas migradas, retirar el aviso y restaurar pruebas de promedio/denominador/
+estados/unidades. La existencia de este documento no decide reglas ambiguas de
+mezcla de unidades ni fallbacks experimentales de Ventas.
+
+### Importación: un conjunto atómico, solo desde fuente de lectura
+
+Comandos definitivos (agrupados en lugar de siete importadores independientes):
+
+```bash
+./vendor/bin/sail artisan legacy:validar-productos
+./vendor/bin/sail artisan legacy:importar-productos --dry-run
+./vendor/bin/sail artisan legacy:importar-productos --lote=500
+```
+
+ProductsImporter reutiliza ImportConnections: bases/cuentas efectivas distintas,
+legacy italian SELECT/USAGE directos sin roles/grant option, mysql italian_laravel
+estricto, utf8mb4, FKs activas, sin réplicas/prefijos. No escribe source, no cambia
+roles/caché. Prevalida completos los siete conjuntos, IDs, tipos, precisión, FKs
+entre conjuntos y datos existentes; compara unicidad de familias/nombre/clave
+usando la collation REAL de cada columna destino. Cero filas no genera defaults:
+se respeta la ausencia; una referencia hacia un padre ausente rechaza la operación.
+No elige ni fusiona duplicados de claves UNIQUE. Pares históricos no únicos se
+conservan. Destino idéntico omite; diferencias son conflictos; sin fila puede
+insertar solamente si no reutiliza un ID consumido/reservado sin procedencia.
+
+Dry-run/validación ejecutan SELECT/SHOW exclusivamente, sin transacción, marcador,
+AUTO_INCREMENT, caché ni escrituras. Informan conteos insertados/idénticos/
+rechazados/conflictos/pendientes por tabla, IDs y motivos (25 muestras máximo),
+secuencias fuente/destino. No imprimen datos sensibles ni excepciones SQL.
+
+El conjunto tiene tamaño de catálogo (3589 filas en este dump), por lo que se
+prevalida en memoria; INSERTs se fraccionan mediante --lote (1–2000) dentro de UNA
+transacción destino. El orden es medidas→categorías→familias→insumos→conversiones→
+productos→componentes. Se bloquean/revalidan destinos y huella de origen antes de
+escribir. Un error revierte todo el catálogo; se reejecuta, sin etapas parciales.
+
+Para distinguir IDs consumidos antes de importar de los consumidos por rollback
+MySQL se registra un intento técnico durable en inicializaciones_sistema:
+clave productos_importacion_v1, version=SHA256 del snapshot exacto de origen,
+created_at=hora REAL del intento. No es el bootstrap de Spatie. Solo se escribe
+tras prevalidación correcta y fuera de la transacción de filas; puede quedar si
+hay interrupción. Permite reintentar el MISMO origen tras rollback. Un origen
+distinto requiere revisión y se rechaza; no resetear manualmente el marcador para
+forzar una sincronización. Después de importar, diferencias por ediciones Laravel
+también se reportan y nunca se sobrescriben.
+
+Se exige artisan down para importación real fuera de testing, además de detener
+trabajos/escritores externos y congelar cambios CodeIgniter durante la ventana.
+La fuente no se bloquea ni escribe: la huella se comprueba de nuevo, pero no
+reemplaza una ventana estable del origen. Si se interrumpe después de confirmar
+filas y antes de reservar contadores, reejecutar completa AUTO_INCREMENT. ALTER
+TABLE de secuencias sucede DESPUÉS del commit, porque MySQL hace commit implícito
+en DDL; nunca se mezcla con la transacción de filas. No se reduce un contador
+destino más alto. Los registros creados después por Laravel no se renumeran.
+
+### Aplicación local después de sincronizar
+
+Respaldo del destino y verificación de conexiones efectivas como en etapas
+anteriores; no repetir bootstrap, seeders ni importadores del núcleo/configuración.
+
+```bash
+./vendor/bin/sail artisan config:clear
+./vendor/bin/sail artisan migrate:status
+./vendor/bin/sail artisan migrate --pretend --database=mysql
+./vendor/bin/sail artisan migrate --database=mysql --force
+./vendor/bin/sail artisan legacy:validar-productos
+./vendor/bin/sail artisan legacy:importar-productos --dry-run
+./vendor/bin/sail artisan down
+# Detener también workers/escritores externos; origen CI estable.
+./vendor/bin/sail artisan legacy:importar-productos --lote=500
+./vendor/bin/sail artisan legacy:validar-productos
+# Revisar resultados antes de reabrir si hubo fallo/conflicto.
+./vendor/bin/sail artisan up
+```
+
+No usar fresh/wipe ni importar todo el dump. No se requiere compilar assets por
+este cambio; si el manifest local es antiguo, npm run build como en la etapa 4.
+Verificar con Gerente alta de producto, edición de cantidades/conversiones/costo,
+exports y permisos; Remesas debe informar el pendiente, sin filas calculadas.
+Los seis pares históricos duplicados deben seguir visibles y bloqueados.
+Datos reales, collation local y posibles inconsistencias diferentes del dump
+siguen siendo validaciones del responsable mediante los comandos de preflight.
+
+### Archivos de la etapa y validación ejecutada
+
+Nuevos (8):
+- database/migrations/2026_10_24_000002_create_product_catalog_tables.php.
+- app/Rules/ExactProductDecimal.php.
+- app/Services/Legacy/ProductsImporter.php.
+- app/Console/Commands/ImportLegacyProducts.php y ValidateLegacyProducts.php.
+- tests/Feature/NativeProductsTest.php y ProductsImportTest.php.
+- tests/Support/ProductFixtures.php.
+
+Modificados (32), rutas relativas a italian-laravel salvo documentos raíz:
+- Modelos: Ingredient, IngredientCategory, IngredientConversion, MeasurementUnit,
+  Product, ProductFamily, ProductIngredient.
+- Actions/Products: SaveFormula, UpdateIngredientConversion.
+- Controllers: CostOfSaleController, IngredientsController,
+  ProductCatalogController, ProductsController.
+- Requests/Products: CostOfSaleReadRequest, ProductsReadRequest,
+  SaveFormulaRequest, SaveProductRequest, UpdateCostOfSaleRequest.
+- Queries: CostOfSale, IngredientsListing, ProductsListing.
+- Blade products: catalog, cost-of-sale, formulas, ingredients.
+- Tests/Feature: CostOfSaleTest, IngredientsTest, ProductCatalogTest,
+  ProductsUnitsTest. Los casos de Remesas ahora verifican indisponibilidad segura,
+  no un cálculo que ya no se ejecuta en esta etapa; el contrato anterior queda
+  descrito arriba para las pruebas de etapa 6.
+- AGENTS.md raíz, italian-laravel/AGENTS.md y docs/migration-context.md.
+
+No se eliminan archivos, no cambian CSS/JS/assets ni dependencias, no se publica
+commit. Solo bases y usuarios sintéticos descartables: MySQL 8.4.13/PHP 8.5.11,
+italian_stage02_source_tests/target_tests para importadores e italian_stage03_tests
+para operación nativa. CORE_IMPORT_MYSQL=1 y CORE_FUNCTIONAL_MYSQL=1 activan las
+variantes existentes de pruebas, sin heredar credenciales/DB_URL de despliegue.
+
+Resultados de regresión (ejecuciones superpuestas, no sumar como pruebas únicas):
+- SQLite: 216 pruebas / 2290 aserciones, incluyendo Productos, Usuarios,
+  Configurar y contratos nativos; fuente legacy deliberadamente inaccesible en
+  pruebas funcionales nuevas y listener que rechaza toda consulta tbl_*.
+- MySQL: 94 pruebas / 7608 aserciones, incluyendo importación Productos,
+  operación nativa, auth SHA-1/Argon2id, Spatie, Inicio, bitácora y regresión de
+  importadores etapas 2/4. Se repitieron los casos específicos tras añadir una
+  defensa frente a exponentes desmesurados en entradas decimales.
+- Pint --test: 38 archivos PHP correctos; git diff --check correcto.
+- Chromium real 1366/390: login, bienvenida/demo, apertura y guardado fetch de
+  fórmula/conversión/costo, radio Remesas controlado, búsqueda combinada con orden,
+  paginación y atrás/adelante manteniendo el mismo documento; sin errores JS ni
+  overflow horizontal. Capturas temporales stage05-formula-* y stage05-cost-*.
+  Preview SQLite sintético; usa el build temporal de assets vigentes de la etapa
+  anterior sin cambiar public/build versionado. No se compiló Vite porque no
+  cambian assets. Las pruebas HTTP conservan fallback y exports XLSX/PDF/Copy.
+
+Las pruebas de importación comprueban dry-run solo SELECT/SHOW, marker sin cambios,
+idempotencia, IDs/huecos, duplicados, conflictos, referencias huérfanas, collation,
+UTF-8, DECIMAL, cero, interrupción/rollback/reintento y ausencia de escrituras en
+legacy. Las nativas prueban FKs reales, restricciones de borrado, roles efectivos,
+filtros/fragments y escrituras en tablas nuevas. SQLite no sustituye la prueba de
+precisión en MySQL. Ninguna ejecución valida ni modifica la BD real del responsable.
+
 ## BD nueva — etapa 4: Configurar (2026-10-23)
 
 Implementada en `migracion-bd`, sin importar datos reales ni ejecutar sobre bases

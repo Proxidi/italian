@@ -17,15 +17,15 @@ class IngredientsListing
     ];
 
     private const SORTS = [
-        'id' => 'tbl_insumos.id', 'Nombre' => 'tbl_insumos.Nombre', 'clave_pedido' => 'tbl_insumos.clave_pedido',
-        'initial_unit_name' => 'initial_unit.Nombre', 'final_unit_name' => 'final_unit.Nombre', 'order_unit_name' => 'order_unit.Nombre',
+        'id' => 'insumos.id', 'Nombre' => 'insumos.nombre', 'clave_pedido' => 'insumos.clave_pedido',
+        'initial_unit_name' => 'initial_unit.nombre', 'final_unit_name' => 'final_unit.nombre', 'order_unit_name' => 'order_unit.nombre',
     ];
 
     public function query(array $filters): Builder
     {
         $query = Ingredient::query()->withCatalogs()->select([
-            'tbl_insumos.id', 'tbl_insumos.Nombre', 'tbl_insumos.clave_pedido',
-            'initial_unit.Nombre as initial_unit_name', 'final_unit.Nombre as final_unit_name', 'order_unit.Nombre as order_unit_name',
+            'insumos.id', 'insumos.nombre as Nombre', 'insumos.clave_pedido',
+            'initial_unit.nombre as initial_unit_name', 'final_unit.nombre as final_unit_name', 'order_unit.nombre as order_unit_name',
         ])->toBase();
         if (filled($search = $filters['q'] ?? null)) {
             $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
@@ -36,6 +36,6 @@ class IngredientsListing
             });
         }
 
-        return $query->orderBy(self::SORTS[$filters['sort'] ?? 'id'], $filters['direction'] ?? 'asc')->orderBy('tbl_insumos.id');
+        return $query->orderBy(self::SORTS[$filters['sort'] ?? 'id'], $filters['direction'] ?? 'asc')->orderBy('insumos.id');
     }
 }

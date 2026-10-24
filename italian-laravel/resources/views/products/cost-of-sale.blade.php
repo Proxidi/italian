@@ -14,6 +14,9 @@
     @fragment('listing')
     <x-ui.listing data-async-list label="Costo de Venta">
         @php($remittances = ($filters['mode'] ?? 'orders') === 'remittances')
+        @if($remittances)
+            <p class="ui-feedback ui-feedback--notice" role="status">Costo de Venta Remesas está temporalmente pendiente de migrar el historial de Gastos en la etapa 6. No se muestran costos hasta disponer de esos datos.</p>
+        @endif
         <form method="GET" action="{{ route('products.cost-of-sale.index') }}" class="cost-filters">
             @foreach(['q', 'sort', 'direction'] as $key)@if(isset($filters[$key]))<input type="hidden" name="{{ $key }}" value="{{ $filters[$key] }}">@endif @endforeach
             <fieldset class="products-options catalog-options"><legend>Opciones:</legend>
@@ -24,7 +27,7 @@
                 <label for="cost-date">Búsqueda:</label><input class="products-input" id="cost-date" type="date" name="date" value="{{ $from }}" required>
                 <label for="cost-end" class="ui-list__sr-only">Fin de semana</label><input class="products-input" id="cost-end" type="date" value="{{ $to }}" readonly>
                 <label for="cost-plaza" class="ui-list__sr-only">Plaza</label><select class="products-input" id="cost-plaza" name="plaza"><option value="">Todas las plazas</option>
-                    @foreach($plazas as $plaza)<option value="{{ $plaza->id }}" @selected((string)($filters['plaza'] ?? '') === (string)$plaza->id)>{{ $plaza->Nombre }}</option>@endforeach
+                    @foreach($plazas as $plaza)<option value="{{ $plaza->id }}" @selected((string)($filters['plaza'] ?? '') === (string)$plaza->id)>{{ $plaza->nombre }}</option>@endforeach
                 </select>
                 <button class="products-button products-button--green" type="submit">⌕ Buscar</button>
             </div>
@@ -50,9 +53,9 @@
                     <td>@if($record->Cost === null)No calculable (cantidad total cero)@else${{ number_format($record->Cost, $remittances ? 3 : 2) }}@endif</td>
                     @if(!$remittances)<td>@can('products.cost-of-sale.update')<x-ui.table-action color="green" data-edit-cost :href="route('products.cost-of-sale.edit', ['ingredient' => $record->id, ...$filters])" aria-label="Editar costo de {{ $record->Nombre }}" />@else<span>Sin permiso de edición</span>@endcan</td>@endif
                 </tr>
-            @empty<tr><td colspan="4">No se encontraron registros.</td></tr>@endforelse
+            @empty<tr><td colspan="4">{{ $remittances ? 'Consulta temporalmente no disponible.' : 'No se encontraron registros.' }}</td></tr>@endforelse
         </x-ui.table>
-        <p class="ui-list__copy-status" role="status">{{ $records->count() }} registros.</p>
+        @unless($remittances)<p class="ui-list__copy-status" role="status">{{ $records->count() }} registros.</p>@endunless
     </x-ui.listing>
     @endfragment
     @if($ingredient)
@@ -63,8 +66,8 @@
                 @csrf @method('PUT')
                 @foreach($filters as $key => $value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach
                 <div class="ui-list__errors" data-cost-errors role="alert" tabindex="-1" @if(!$errors->any()) hidden @endif>{{ implode(' ', $errors->all()) }}</div>
-                <div class="products-field"><label for="cost-name">Nombre:</label><input class="products-input" id="cost-name" value="{{ $ingredient->Nombre }}" readonly></div>
-                <div class="products-field"><label for="cost-value">Costo Venta:</label><input class="products-input" id="cost-value" type="number" name="cost" step="any" required value="{{ old('cost', $ingredient->Costo_Venta) }}"></div>
+                <div class="products-field"><label for="cost-name">Nombre:</label><input class="products-input" id="cost-name" value="{{ $ingredient->nombre }}" readonly></div>
+                <div class="products-field"><label for="cost-value">Costo Venta:</label><input class="products-input" id="cost-value" type="number" name="cost" step="any" required value="{{ old('cost', \App\Rules\ExactProductDecimal::display($ingredient->costo_venta)) }}"></div>
                 <footer><a class="products-button" data-close-cost href="{{ route('products.cost-of-sale.index', $filters) }}">Cerrar</a><button class="products-button products-button--blue" type="submit">Actualizar datos</button></footer>
             </form>
         </dialog>

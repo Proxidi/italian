@@ -12,10 +12,11 @@ class SaveProductRequest extends ProductsReadRequest
     public function rules(): array
     {
         return [...parent::rules(),
-            'nombre' => ['required', 'string', 'max:100', 'unique:tbl_productos,Nombre'],
-            'clave' => ['required', 'string', 'max:50', 'unique:tbl_productos,Clave'],
-            'familia_id' => ['required', 'integer', 'exists:tbl_familia_productos,id'],
+            'nombre' => ['required', 'string', 'max:100', 'unique:productos,nombre'],
+            'clave' => ['required', 'string', 'max:50', 'unique:productos,clave'],
+            'familia_id' => ['required', 'integer', 'exists:familias_productos,id'],
             'Estado' => ['prohibited'],
+            'estado' => ['prohibited'],
         ];
     }
 

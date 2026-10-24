@@ -14,7 +14,12 @@ Eloquent, el rehash progresivo y Usuarios/bitácora/Inicio sobre tablas nuevas.
 El responsable reporta la importación local; no confundirla con nuestras pruebas
 sintéticas. La etapa 4 adapta Configurar a `configuracion_corte_dlc` y
 `configuracion_notificaciones`, con importación global atómica, sin sobrescribir
-configuraciones operativas. Productos conserva persistencia pendiente. El bootstrap inicial de Spatie
+configuraciones operativas. La etapa 5 adapta Medidas/Insumos/Productos/Fórmulas
+y Costo Pedido a tablas nativas; Costo Remesas espera Gastos de etapa 6, con aviso
+explícito y sin cálculos simulados. La importación agrupada `legacy:importar-productos`
+requiere mantenimiento para escrituras reales y conserva una reserva técnica de
+IDs en `inicializaciones_sistema`, sin modificar el bootstrap Spatie.
+El bootstrap inicial de Spatie
 usa un marcador; no restablecer permisos operativos al repetir seeders.
 Principal: `italian_laravel`; `legacy`: fuente `italian` de solo lectura para
 importadores. No usar la conexión `legacy` desde controladores ni ejecutar sobre

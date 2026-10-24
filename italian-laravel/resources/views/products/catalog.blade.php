@@ -11,7 +11,7 @@
             @foreach (['q', 'sort', 'direction'] as $key)@if(isset($filters[$key]))<input type="hidden" name="{{ $key }}" value="{{ $filters[$key] }}">@endif @endforeach
             <label for="product-family">Familias:</label>
             <select class="products-input" id="product-family" name="family"><option value="">Todas las familias</option>
-                @foreach ($families as $family)<option value="{{ $family->id }}" @selected((string)($filters['family'] ?? '') === (string)$family->id)>{{ $family->Nombre }}</option>@endforeach
+                @foreach ($families as $family)<option value="{{ $family->id }}" @selected((string)($filters['family'] ?? '') === (string)$family->id)>{{ $family->nombre }}</option>@endforeach
             </select>
             <button class="products-button products-button--blue" type="submit">Buscar</button>
             @can('products.catalog.create')<a class="products-button products-button--blue" data-open-product href="{{ route('products.catalog.create', $filters) }}">✚ Agregar Producto</a>@endcan
@@ -52,7 +52,7 @@
                     <div class="products-field"><label for="product-{{ $name }}">{{ $label }}:</label><input class="products-input" name="{{ $name }}" id="product-{{ $name }}" required maxlength="{{ $length }}" value="{{ old($name) }}"></div>
                 @endforeach
                 <div class="products-field"><label for="product-family-create">Familia:</label><select class="products-input" name="familia_id" id="product-family-create" required>
-                    @foreach($families as $family)<option value="{{ $family->id }}" @selected((string)old('familia_id') === (string)$family->id)>{{ $family->Nombre }}</option>@endforeach
+                    @foreach($families as $family)<option value="{{ $family->id }}" @selected((string)old('familia_id') === (string)$family->id)>{{ $family->nombre }}</option>@endforeach
                 </select></div>
                 <footer><button class="products-button" type="button" data-close-product>Cerrar</button><button class="products-button products-button--blue" type="submit">Guardar datos</button></footer>
             </form>

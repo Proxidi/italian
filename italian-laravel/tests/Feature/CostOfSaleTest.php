@@ -32,30 +32,30 @@ class CostOfSaleTest extends TestCase
         DB::purge('cost_tests');
         $this->app->forgetInstance(PermissionRegistrar::class);
         $this->withoutVite();
-        foreach (['tbl_plazas', 'tbl_unidades', 'tbl_categorias_insumos'] as $name) {
+        foreach (['tbl_plazas', 'medidas', 'categorias_insumos'] as $name) {
             Schema::create($name, function (Blueprint $table) {
                 $table->increments('id');
-                $table->string('Nombre', 50);
+                $table->string('nombre', 50);
             });
         }
         $this->createNativeCoreSchema();
-        Schema::create('tbl_insumos', function (Blueprint $table) {
+        Schema::create('insumos', function (Blueprint $table) {
             $table->increments('id');
-            $table->string('Nombre', 100);
+            $table->string('nombre', 100);
             $table->string('clave_pedido', 45);
-            foreach (['categorias_insumos_id' => 'tbl_categorias_insumos', 'unidad_id' => 'tbl_unidades', 'unidad_final' => 'tbl_unidades', 'unidad_pedido' => 'tbl_unidades'] as $column => $target) {
+            foreach (['categorias_insumos_id' => 'categorias_insumos', 'unidad_id' => 'medidas', 'unidad_final' => 'medidas', 'unidad_pedido' => 'medidas'] as $column => $target) {
                 $table->integer($column);
                 $table->foreign($column)->references('id')->on($target);
             }
             $table->boolean('inv_produccion')->default(true);
             $table->boolean('inv_fisico')->default(true);
             $table->boolean('pedido')->default(true);
-            $table->boolean('Pedido_Pasteleria');
+            $table->boolean('pedido_pasteleria');
             $table->integer('categoria_pedido_id')->default(1);
             $table->integer('categoria_quebranto_id')->default(1);
-            $table->boolean('Analisis_CV');
-            $table->double('Costo_Venta');
-            $table->integer('Orden_Captura_Inventario')->default(0);
+            $table->boolean('analisis_cv');
+            $table->double('costo_venta');
+            $table->integer('orden_captura_inventario')->default(0);
         });
         Schema::create('tbl_insumos_gastos', function (Blueprint $table) {
             $table->increments('id');
@@ -67,9 +67,9 @@ class CostOfSaleTest extends TestCase
             $table->integer('plaza_id');
             $table->integer('insumo_gasto_id');
             $table->float('Importe');
-            $table->float('Cantidad');
+            $table->float('cantidad');
             $table->date('Fecha');
-            $table->boolean('Estado')->default(true);
+            $table->boolean('estado')->default(true);
         });
         foreach (['roles', 'permissions'] as $name) {
             Schema::create($name, function (Blueprint $table) {
@@ -93,9 +93,9 @@ class CostOfSaleTest extends TestCase
             $table->unsignedBigInteger('permission_id');
             $table->primary(['role_id', 'permission_id']);
         });
-        DB::table('tbl_plazas')->insert(['id' => 1, 'Nombre' => 'Plaza sintética']);
-        DB::table('tbl_categorias_insumos')->insert(['id' => 1, 'Nombre' => 'Categoría de prueba']);
-        DB::table('tbl_unidades')->insert([['id' => 1, 'Nombre' => 'Gramos'], ['id' => 5, 'Nombre' => 'Kilogramos'], ['id' => 6, 'Nombre' => 'Paquetes']]);
+        DB::table('tbl_plazas')->insert(['id' => 1, 'nombre' => 'Plaza sintética']);
+        DB::table('categorias_insumos')->insert(['id' => 1, 'nombre' => 'Categoría de prueba']);
+        DB::table('medidas')->insert([['id' => 1, 'nombre' => 'Gramos'], ['id' => 5, 'nombre' => 'Kilogramos'], ['id' => 6, 'nombre' => 'Paquetes']]);
         foreach (['root', 'superadmin', 'admin', 'submanager', 'socio'] as $role) {
             Role::findOrCreate($role, 'web');
         }
@@ -109,9 +109,9 @@ class CostOfSaleTest extends TestCase
 
     protected function ingredient(string $name = 'Café de prueba', array $overrides = []): Ingredient
     {
-        $id = DB::table('tbl_insumos')->insertGetId([
-            'Nombre' => $name, 'clave_pedido' => 'CAF', 'categorias_insumos_id' => 1, 'unidad_id' => 1, 'unidad_final' => 5, 'unidad_pedido' => 6,
-            'Pedido_Pasteleria' => 0, 'Analisis_CV' => 1, 'Costo_Venta' => 155.25, ...$overrides,
+        $id = DB::table('insumos')->insertGetId([
+            'nombre' => $name, 'clave_pedido' => 'CAF', 'categorias_insumos_id' => 1, 'unidad_id' => 1, 'unidad_final' => 5, 'unidad_pedido' => 6,
+            'pedido_pasteleria' => 0, 'analisis_cv' => 1, 'costo_venta' => 155.25, ...$overrides,
         ]);
 
         return Ingredient::findOrFail($id);
@@ -126,14 +126,14 @@ class CostOfSaleTest extends TestCase
     protected function expense(Ingredient $ingredient, float $amount, float $quantity, string $date = '2026-10-20', int $plaza = 1, int $state = 1): void
     {
         $item = DB::table('tbl_insumos_gastos')->insertGetId(['insumo_id' => $ingredient->id]);
-        DB::table('tbl_gastos')->insert(['plaza_id' => $plaza, 'insumo_gasto_id' => $item, 'Importe' => $amount, 'Cantidad' => $quantity, 'Fecha' => $date, 'Estado' => $state]);
+        DB::table('tbl_gastos')->insert(['plaza_id' => $plaza, 'insumo_gasto_id' => $item, 'Importe' => $amount, 'cantidad' => $quantity, 'Fecha' => $date, 'estado' => $state]);
     }
 
     public function test_orders_use_stored_cost_and_correct_flag_groups_without_formulas(): void
     {
         $this->ingredient('Pedido café');
-        $this->ingredient('Pastelería', ['pedido' => 0, 'Pedido_Pasteleria' => 1, 'Costo_Venta' => 13.456]);
-        $this->ingredient('Excluido', ['Analisis_CV' => 0]);
+        $this->ingredient('Pastelería', ['pedido' => 0, 'pedido_pasteleria' => 1, 'costo_venta' => 13.456]);
+        $this->ingredient('Excluido', ['analisis_cv' => 0]);
         $this->ingredient('Remesas', ['pedido' => 0]);
         $this->actingAs($this->actor());
         $this->get(route('products.cost-of-sale.index'))->assertOk()->assertSee('Pedido café')->assertSee('Pastelería')
@@ -141,9 +141,9 @@ class CostOfSaleTest extends TestCase
         $this->assertSame(2, app(CostOfSale::class)->query([])->count());
     }
 
-    public function test_remittances_are_weighted_by_quantity_across_mappings_and_include_zero_rows_and_all_states(): void
+    public function test_remittances_are_unavailable_even_with_legacy_expense_fixtures(): void
     {
-        DB::table('tbl_plazas')->insert(['id' => 2, 'Nombre' => 'Otra plaza']);
+        DB::table('tbl_plazas')->insert(['id' => 2, 'nombre' => 'Otra plaza']);
         $item = $this->ingredient('Azúcar', ['pedido' => 0]);
         $this->ingredient('Sin compras', ['pedido' => 0]);
         $this->ingredient('Pedido excluido');
@@ -154,21 +154,18 @@ class CostOfSaleTest extends TestCase
         $this->expense($item, 800, 2, plaza: 2);
         $query = app(CostOfSale::class);
         $rows = $query->query(['mode' => 'remittances', 'date' => '2026-10-20'])->get();
-        $this->assertCount(4, $rows);
-        $this->assertEquals(38, $rows->first(fn ($row) => $row->id === $item->id && $row->plaza_id === 1)->Cost);
-        $this->assertEquals(400, $rows->first(fn ($row) => $row->id === $item->id && $row->plaza_id === 2)->Cost);
-        $this->assertEquals(0, $rows->last()->Cost);
+        $this->assertCount(0, $rows);
         $this->actingAs($this->actor())->get(route('products.cost-of-sale.index', ['mode' => 'remittances', 'date' => '2026-10-20', 'plaza' => 1]))
-            ->assertOk()->assertSee('$38.000')->assertSee('2026-10-19')->assertSee('2026-10-25')->assertDontSee('data-edit-cost', false);
+            ->assertOk()->assertSee('etapa 6')->assertSee('2026-10-19')->assertSee('2026-10-25')->assertDontSee('data-edit-cost', false)->assertDontSee('$38.000');
     }
 
-    public function test_zero_denominator_is_not_reported_as_a_valid_zero_cost(): void
+    public function test_pending_remittances_do_not_simulate_zero_denominator_results(): void
     {
         $item = $this->ingredient('Inconsistente', ['pedido' => 0]);
         $this->expense($item, 20, 0);
         $this->actingAs($this->actor())->get(route('products.cost-of-sale.index', ['mode' => 'remittances', 'date' => '2026-10-20']))
-            ->assertOk()->assertSee('No calculable (cantidad total cero)');
-        $this->assertNull(app(CostOfSale::class)->query(['mode' => 'remittances', 'date' => '2026-10-20'])->first()->Cost);
+            ->assertOk()->assertSee('Consulta temporalmente no disponible.')->assertDontSee('$0.000');
+        $this->assertNull(app(CostOfSale::class)->query(['mode' => 'remittances', 'date' => '2026-10-20'])->first());
     }
 
     public function test_iso_week_uses_the_date_year_correctly_at_year_boundary(): void
@@ -177,9 +174,9 @@ class CostOfSaleTest extends TestCase
         $this->assertSame(['2025-12-29', '2026-01-04'], app(CostOfSale::class)->week('2025-12-31'));
     }
 
-    public function test_combined_remittance_filters_sort_and_fragment_use_the_same_query_as_http(): void
+    public function test_pending_remittance_filters_preserve_http_and_fragment_interfaces(): void
     {
-        DB::table('tbl_plazas')->insert(['id' => 2, 'Nombre' => 'Otra']);
+        DB::table('tbl_plazas')->insert(['id' => 2, 'nombre' => 'Otra']);
         $a = $this->ingredient('Café A', ['pedido' => 0]);
         $b = $this->ingredient('Café B', ['pedido' => 0]);
         $this->ingredient('Té', ['pedido' => 0]);
@@ -187,10 +184,10 @@ class CostOfSaleTest extends TestCase
         $this->expense($b, 50, 2);
         $this->actingAs($this->actor());
         $params = ['mode' => 'remittances', 'date' => '2026-10-20', 'plaza' => 1, 'q' => 'Café', 'sort' => 'Cost', 'direction' => 'desc'];
-        $full = $this->get(route('products.cost-of-sale.index', $params))->assertOk()->assertSeeInOrder(['Café B', 'Café A']);
+        $full = $this->get(route('products.cost-of-sale.index', $params))->assertOk()->assertSee('etapa 6');
         $partial = $this->withHeader('X-Listing-Fragment', 'listing')->get(route('products.cost-of-sale.index', $params))->assertOk()
             ->assertHeader('X-Listing-Fragment', 'listing')->assertDontSee('<html', false)->assertDontSee('app-sidebar', false)
-            ->assertSeeInOrder(['Café B', 'Café A'])->assertSee('name="plaza"', false)->assertSee('value="Café"', false)->assertDontSee('data-record-row><td>3', false);
+            ->assertSee('etapa 6')->assertSee('name="plaza"', false)->assertSee('value="Café"', false)->assertDontSee('data-record-row><td>3', false);
         $this->assertStringContainsString($partial->getContent(), $full->getContent());
     }
 
@@ -203,13 +200,13 @@ class CostOfSaleTest extends TestCase
 
     public function test_search_includes_displayed_currency_grouping_and_precision(): void
     {
-        $this->ingredient('Pedido', ['Costo_Venta' => 1234.5678]);
+        $this->ingredient('pedido', ['costo_venta' => 1234.5678]);
         $item = $this->ingredient('Remesa', ['pedido' => 0]);
         $this->expense($item, 12345.678, 10);
         $this->actingAs($this->actor())->get(route('products.cost-of-sale.index', ['q' => '$1,234.57']))
             ->assertOk()->assertSee('data-record-row', false)->assertSee('$1,234.57');
         $this->get(route('products.cost-of-sale.index', ['mode' => 'remittances', 'date' => '2026-10-20', 'q' => '$1,234.568']))
-            ->assertOk()->assertSee('data-record-row', false)->assertSee('$1,234.568');
+            ->assertOk()->assertDontSee('data-record-row', false)->assertDontSee('$1,234.568</td>', false)->assertSee('etapa 6');
     }
 
     public function test_legacy_cost_tables_have_neither_export_nor_pagination(): void
@@ -233,7 +230,7 @@ class CostOfSaleTest extends TestCase
         $item = $this->ingredient();
         $this->actingAs($this->actor($role))->withHeader('X-Listing-Fragment', 'listing')->get(route('products.cost-of-sale.index'))->assertForbidden();
         $this->putJson(route('products.cost-of-sale.update', $item), ['cost' => 5])->assertForbidden();
-        $this->assertEquals(155.25, $item->fresh()->Costo_Venta);
+        $this->assertEquals(155.25, $item->fresh()->costo_venta);
     }
 
     public function test_guests_are_not_given_a_fragment_and_cannot_write(): void
@@ -263,19 +260,19 @@ class CostOfSaleTest extends TestCase
         $this->get(route('products.cost-of-sale.edit', $item))->assertOk()->assertSee('data-cost-form', false)->assertSee('name="_token"', false)->assertSee('name="_method" value="PUT"', false);
         $this->put(route('products.cost-of-sale.update', $item), ['cost' => 1.234567, 'q' => 'Café', 'direction' => 'desc'])->assertRedirect(route('products.cost-of-sale.index', ['q' => 'Café', 'direction' => 'desc']));
         $after = $item->fresh()->getAttributes();
-        $this->assertEquals(1.234567, $after['Costo_Venta']);
-        unset($before['Costo_Venta'], $after['Costo_Venta']);
+        $this->assertEquals(1.234567, $after['costo_venta']);
+        unset($before['costo_venta'], $after['costo_venta']);
         $this->assertSame($before, $after);
         $this->assertSame($expenses, DB::table('tbl_gastos')->get()->toJson());
         $this->putJson(route('products.cost-of-sale.update', $item), ['cost' => 0])->assertOk()->assertJsonPath('message', 'Costo actualizado.');
-        $this->assertEquals(0, $item->fresh()->Costo_Venta);
+        $this->assertEquals(0, $item->fresh()->costo_venta);
     }
 
     public function test_finite_negative_cost_is_numeric_in_legacy_and_is_not_silently_restricted(): void
     {
         $item = $this->ingredient();
         $this->actingAs($this->actor())->putJson(route('products.cost-of-sale.update', $item), ['cost' => -0.125])->assertOk();
-        $this->assertEquals(-0.125, $item->fresh()->Costo_Venta);
+        $this->assertEquals(-0.125, $item->fresh()->costo_venta);
     }
 
     public static function badCosts(): array
@@ -288,7 +285,7 @@ class CostOfSaleTest extends TestCase
     {
         $item = $this->ingredient();
         $this->actingAs($this->actor())->putJson(route('products.cost-of-sale.update', $item), ['cost' => $value])->assertUnprocessable()->assertJsonValidationErrors('cost');
-        $this->assertEquals(155.25, $item->fresh()->Costo_Venta);
+        $this->assertEquals(155.25, $item->fresh()->costo_venta);
     }
 
     public function test_non_order_and_changed_eligibility_and_missing_ids_cannot_be_edited(): void
@@ -296,7 +293,7 @@ class CostOfSaleTest extends TestCase
         $item = $this->ingredient('Remesa', ['pedido' => 0]);
         $this->actingAs($this->actor())->get(route('products.cost-of-sale.edit', $item))->assertNotFound();
         $this->putJson(route('products.cost-of-sale.update', $item), ['cost' => 3])->assertNotFound();
-        $item = $this->ingredient('Pedido', ['Analisis_CV' => 0]);
+        $item = $this->ingredient('pedido', ['analisis_cv' => 0]);
         $this->putJson(route('products.cost-of-sale.update', $item), ['cost' => 3])->assertNotFound();
         $this->get(route('products.cost-of-sale.edit', 999))->assertNotFound();
     }

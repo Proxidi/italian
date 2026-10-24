@@ -57,16 +57,16 @@
         <dialog class="products-dialog" data-ingredient-conversions data-return-url="{{ route('products.ingredients.index', $filters) }}" aria-labelledby="conversions-title">
             <header><h2 id="conversions-title">Configurando Insumo</h2><button type="button" data-close-conversions aria-label="Cerrar">×</button></header>
             <div class="ingredients-conversions-body">
-                <p>{{ $ingredient->Nombre }}</p>
+                <p>{{ $ingredient->nombre }}</p>
                 @if ($errors->any())<div class="ui-list__errors" role="alert"><p>No se guardaron los cambios:</p><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
                 @if ($conversions->count() > 1)<p role="status">Existen varias conversiones para este insumo. Su edición requiere revisión.</p>@endif
                 <x-ui.table label="Operaciones del insumo">
                     <x-slot:head><th scope="col">Bodega</th><th scope="col">Pedido</th><th scope="col" data-copy-exclude>Editar</th></x-slot:head>
                     @forelse ($conversions as $conversion)
-                        <tr><td>{{ $conversion->Bodega }}</td><td>{{ $conversion->Pedido }}</td><td>
+                        <tr><td>{{ $conversion->bodega }}</td><td>{{ $conversion->pedido }}</td><td>
                             @if ($canEdit)
-                                <x-ui.table-action color="cyan" data-edit-conversion data-id="{{ $conversion->id }}" data-bodega="{{ $conversion->Bodega }}" data-pedido="{{ $conversion->Pedido }}"
-                                    data-action="{{ route('products.ingredients.conversions.update', ['ingredient' => $ingredient->id, 'conversion' => $conversion->id]) }}" aria-label="Editar operaciones de {{ $ingredient->Nombre }}" />
+                                <x-ui.table-action color="cyan" data-edit-conversion data-id="{{ $conversion->id }}" data-bodega="{{ $conversion->bodega }}" data-pedido="{{ $conversion->pedido }}"
+                                    data-action="{{ route('products.ingredients.conversions.update', ['ingredient' => $ingredient->id, 'conversion' => $conversion->id]) }}" aria-label="Editar operaciones de {{ $ingredient->nombre }}" />
                             @else<span>Edición no disponible</span>@endif
                         </td></tr>
                     @empty<tr><td colspan="3">Este insumo no tiene operaciones configuradas.</td></tr>@endforelse
@@ -85,7 +85,7 @@
                     @if ($errors->any())<div class="ui-list__errors" role="alert"><p>No se guardaron los cambios:</p><ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
                     @foreach (['bodega' => ['Bodega', 200, 'Hasta tres operaciones sucesivas. Ejemplo: -,615,/,1000.'], 'pedido' => ['Pedido', 50, 'Una sola operación. Ejemplo: *,150.']] as $field => [$label, $length, $help])
                         <div class="products-field"><label for="conversion-{{ $field }}">{{ $label }}:</label>
-                            <input class="products-input" id="conversion-{{ $field }}" name="{{ $field }}" type="text" required maxlength="{{ $length }}" value="{{ $oldConversion && is_string(old($field)) ? old($field) : $conversions->first()->{ucfirst($field)} }}" aria-describedby="conversion-{{ $field }}-help conversion-{{ $field }}-error" @error($field) aria-invalid="true" @enderror>
+                            <input class="products-input" id="conversion-{{ $field }}" name="{{ $field }}" type="text" required maxlength="{{ $length }}" value="{{ $oldConversion && is_string(old($field)) ? old($field) : $conversions->first()->{$field} }}" aria-describedby="conversion-{{ $field }}-help conversion-{{ $field }}-error" @error($field) aria-invalid="true" @enderror>
                             <p id="conversion-{{ $field }}-help" class="ingredients-field-help">{{ $help }} Operadores: *, +, -, /; sin espacios.</p>
                             <p id="conversion-{{ $field }}-error" class="products-field-error">@error($field){{ $message }}@enderror</p>
                         </div>

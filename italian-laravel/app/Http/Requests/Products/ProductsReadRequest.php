@@ -17,7 +17,7 @@ class ProductsReadRequest extends FormRequest
     {
         return [
             'q' => ['nullable', 'string', 'max:100'],
-            'family' => ['nullable', 'integer', 'exists:tbl_familia_productos,id'],
+            'family' => ['nullable', 'integer', 'exists:familias_productos,id'],
             'sort' => ['nullable', Rule::in(array_column(ProductsListing::COLUMNS, 'field'))],
             'direction' => ['nullable', Rule::in(['asc', 'desc'])],
             'page' => ['nullable', 'integer', 'min:1'],

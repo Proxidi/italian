@@ -3,12 +3,18 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MeasurementUnit extends Model
 {
-    protected $table = 'tbl_unidades';
+    protected $table = 'medidas';
 
     public $timestamps = false;
 
-    protected $fillable = ['Nombre'];
+    protected $fillable = ['nombre'];
+
+    public function ingredients(): HasMany
+    {
+        return $this->hasMany(Ingredient::class, 'unidad_id');
+    }
 }

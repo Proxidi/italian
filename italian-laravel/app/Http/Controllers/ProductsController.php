@@ -36,7 +36,7 @@ class ProductsController extends Controller
 
     public function store(SaveUnitRequest $request): RedirectResponse
     {
-        MeasurementUnit::create(['Nombre' => $request->validated('nombre')]);
+        MeasurementUnit::create(['nombre' => $request->validated('nombre')]);
 
         return to_route('products.units.index')->with('unit-success', 'Unidad registrada correctamente!!');
     }
@@ -44,7 +44,7 @@ class ProductsController extends Controller
     public function update(SaveUnitRequest $request, MeasurementUnit $unit): RedirectResponse
     {
         // One atomic row update. References and conversion data remain untouched.
-        $unit->update(['Nombre' => $request->validated('nombre')]);
+        $unit->update(['nombre' => $request->validated('nombre')]);
 
         return to_route('products.units.index')->with('unit-success', 'Unidad actualizada correctamente!!')->with('unit-updated', true);
     }
@@ -67,11 +67,11 @@ class ProductsController extends Controller
 
     private function query(UnitsReadRequest $request): Builder
     {
-        $query = MeasurementUnit::query()->select(['id', 'Nombre'])->toBase();
+        $query = MeasurementUnit::query()->select(['id', 'nombre as Nombre'])->toBase();
         if (filled($search = $request->validated('q'))) {
-            $query->whereRaw("Nombre LIKE ? ESCAPE '!'", ['%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%']);
+            $query->whereRaw("nombre LIKE ? ESCAPE '!'", ['%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%']);
         }
 
-        return $query->orderBy('Nombre', $request->validated('direction') ?? 'asc')->orderBy('id');
+        return $query->orderBy('nombre', $request->validated('direction') ?? 'asc')->orderBy('id');
     }
 }

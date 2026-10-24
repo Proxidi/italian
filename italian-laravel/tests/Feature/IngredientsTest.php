@@ -35,37 +35,37 @@ class IngredientsTest extends TestCase
         DB::purge('ingredients_tests');
         $this->app->forgetInstance(PermissionRegistrar::class);
         $this->withoutVite();
-        foreach (['tbl_plazas', 'tbl_unidades', 'tbl_categorias_insumos'] as $name) {
+        foreach (['tbl_plazas', 'medidas', 'categorias_insumos'] as $name) {
             Schema::create($name, function (Blueprint $table) {
                 $table->increments('id');
-                $table->string('Nombre', 50);
+                $table->string('nombre', 50);
             });
         }
         $this->createNativeCoreSchema();
-        Schema::create('tbl_insumos', function (Blueprint $table) {
+        Schema::create('insumos', function (Blueprint $table) {
             $table->increments('id');
-            $table->string('Nombre', 100);
+            $table->string('nombre', 100);
             $table->string('clave_pedido', 45);
-            foreach (['categorias_insumos_id' => 'tbl_categorias_insumos', 'unidad_id' => 'tbl_unidades', 'unidad_final' => 'tbl_unidades', 'unidad_pedido' => 'tbl_unidades'] as $column => $target) {
+            foreach (['categorias_insumos_id' => 'categorias_insumos', 'unidad_id' => 'medidas', 'unidad_final' => 'medidas', 'unidad_pedido' => 'medidas'] as $column => $target) {
                 $table->integer($column);
                 $table->foreign($column)->references('id')->on($target);
             }
             $table->boolean('inv_produccion')->default(true);
             $table->boolean('inv_fisico')->default(true);
             $table->boolean('pedido')->default(true);
-            $table->boolean('Pedido_Pasteleria');
+            $table->boolean('pedido_pasteleria');
             $table->integer('categoria_pedido_id')->default(1);
             $table->integer('categoria_quebranto_id')->default(1);
-            $table->boolean('Analisis_CV');
-            $table->double('Costo_Venta');
-            $table->integer('Orden_Captura_Inventario')->default(0);
+            $table->boolean('analisis_cv');
+            $table->double('costo_venta');
+            $table->integer('orden_captura_inventario')->default(0);
         });
-        Schema::create('tbl_insumos_inventario', function (Blueprint $table) {
+        Schema::create('conversiones_insumos', function (Blueprint $table) {
             $table->increments('id');
-            $table->string('Nombre', 150);
+            $table->string('nombre', 150);
             $table->integer('insumo_id');
-            $table->foreign('insumo_id')->references('id')->on('tbl_insumos');
-            foreach (['Bodega' => 200, 'Piso' => 200, 'Total' => 50, 'DLC' => 50, 'Pedido' => 50, 'CVI' => 20, 'CVG' => 20] as $column => $size) {
+            $table->foreign('insumo_id')->references('id')->on('insumos');
+            foreach (['bodega' => 200, 'piso' => 200, 'total' => 50, 'dlc' => 50, 'pedido' => 50, 'cvi' => 20, 'cvg' => 20] as $column => $size) {
                 $table->string($column, $size)->default('*,1');
             }
         });
@@ -74,7 +74,7 @@ class IngredientsTest extends TestCase
             Schema::create($name, function (Blueprint $table) {
                 $table->increments('id');
                 $table->integer('insumo_id');
-                $table->double('Cantidad');
+                $table->double('cantidad');
                 $table->string('Fecha');
             });
         }
@@ -100,9 +100,9 @@ class IngredientsTest extends TestCase
             $table->unsignedBigInteger('permission_id');
             $table->primary(['role_id', 'permission_id']);
         });
-        DB::table('tbl_plazas')->insert(['id' => 1, 'Nombre' => 'Plaza sintética']);
-        DB::table('tbl_categorias_insumos')->insert(['id' => 1, 'Nombre' => 'Categoría de prueba']);
-        DB::table('tbl_unidades')->insert([['id' => 1, 'Nombre' => 'Gramos'], ['id' => 5, 'Nombre' => 'Kilogramos'], ['id' => 6, 'Nombre' => 'Paquetes']]);
+        DB::table('tbl_plazas')->insert(['id' => 1, 'nombre' => 'Plaza sintética']);
+        DB::table('categorias_insumos')->insert(['id' => 1, 'nombre' => 'Categoría de prueba']);
+        DB::table('medidas')->insert([['id' => 1, 'nombre' => 'Gramos'], ['id' => 5, 'nombre' => 'Kilogramos'], ['id' => 6, 'nombre' => 'Paquetes']]);
         foreach (['root', 'superadmin', 'admin', 'submanager', 'socio'] as $role) {
             Role::findOrCreate($role, 'web');
         }
@@ -123,9 +123,9 @@ class IngredientsTest extends TestCase
 
     protected function ingredient(string $name = 'Café de prueba', array $overrides = []): Ingredient
     {
-        $id = DB::table('tbl_insumos')->insertGetId([
-            'Nombre' => $name, 'clave_pedido' => 'CAF', 'categorias_insumos_id' => 1, 'unidad_id' => 1, 'unidad_final' => 5, 'unidad_pedido' => 6,
-            'Pedido_Pasteleria' => 0, 'Analisis_CV' => 1, 'Costo_Venta' => 155.25, ...$overrides,
+        $id = DB::table('insumos')->insertGetId([
+            'nombre' => $name, 'clave_pedido' => 'CAF', 'categorias_insumos_id' => 1, 'unidad_id' => 1, 'unidad_final' => 5, 'unidad_pedido' => 6,
+            'pedido_pasteleria' => 0, 'analisis_cv' => 1, 'costo_venta' => 155.25, ...$overrides,
         ]);
 
         return Ingredient::findOrFail($id);
@@ -133,9 +133,9 @@ class IngredientsTest extends TestCase
 
     protected function conversion(Ingredient $ingredient, array $overrides = []): IngredientConversion
     {
-        $id = DB::table('tbl_insumos_inventario')->insertGetId([
-            'Nombre' => $ingredient->Nombre, 'insumo_id' => $ingredient->id, 'Bodega' => '*,25', 'Piso' => '-,615,/,1000',
-            'Total' => '/,25', 'DLC' => '/,1000', 'Pedido' => '*,150', 'CVI' => '*,2', 'CVG' => '/,3', ...$overrides,
+        $id = DB::table('conversiones_insumos')->insertGetId([
+            'nombre' => $ingredient->nombre, 'insumo_id' => $ingredient->id, 'bodega' => '*,25', 'piso' => '-,615,/,1000',
+            'total' => '/,25', 'dlc' => '/,1000', 'pedido' => '*,150', 'cvi' => '*,2', 'cvg' => '/,3', ...$overrides,
         ]);
 
         return IngredientConversion::findOrFail($id);
@@ -149,8 +149,8 @@ class IngredientsTest extends TestCase
     protected function snapshot(): array
     {
         return array_map(fn ($table) => DB::table($table)->orderBy('id')->get()->toJson(), [
-            'tbl_insumos', 'tbl_insumos_inventario', 'tbl_inventario_productos', 'tbl_captura_inventario',
-            'tbl_insumos_gastos', 'tbl_pedidos', 'tbl_historial_completo_if', 'tbl_unidades', 'tbl_categorias_insumos',
+            'insumos', 'conversiones_insumos', 'tbl_inventario_productos', 'tbl_captura_inventario',
+            'tbl_insumos_gastos', 'tbl_pedidos', 'tbl_historial_completo_if', 'medidas', 'categorias_insumos',
         ]);
     }
 
@@ -161,7 +161,7 @@ class IngredientsTest extends TestCase
         $before = $conversion->toArray();
         $this->actingAs($this->actor(), 'web')->putJson($this->updateUrl($ingredient, $conversion), ['bodega' => '/,2', 'pedido' => '*,3'])
             ->assertOk()->assertExactJson(['message' => 'Insumo actualizado!!'])->assertSessionMissing('ingredient-success');
-        $this->assertSame([...$before, 'Bodega' => '/,2', 'Pedido' => '*,3'], $conversion->fresh()->toArray());
+        $this->assertSame([...$before, 'bodega' => '/,2', 'pedido' => '*,3'], $conversion->fresh()->toArray());
     }
 
     public function test_fetch_errors_never_report_success_or_change_data(): void
@@ -259,10 +259,10 @@ class IngredientsTest extends TestCase
         $this->assertSame('Kilogramos', $records->first()->final_unit_name);
         $this->assertSame('Paquetes', $records->first()->order_unit_name);
         $this->assertSame($before, $this->snapshot());
-        $this->assertSame('Categoría de prueba', $first->category->Nombre);
-        $this->assertSame('Gramos', $first->initialUnit->Nombre);
-        $this->assertSame('Kilogramos', $first->finalUnit->Nombre);
-        $this->assertSame('Paquetes', $first->orderUnit->Nombre);
+        $this->assertSame('Categoría de prueba', $first->category->nombre);
+        $this->assertSame('Gramos', $first->initialUnit->nombre);
+        $this->assertSame('Kilogramos', $first->finalUnit->nombre);
+        $this->assertSame('Paquetes', $first->orderUnit->nombre);
     }
 
     public function test_search_sort_pagination_and_validation_are_bounded_and_literal(): void
@@ -297,20 +297,20 @@ class IngredientsTest extends TestCase
         $conversion = $this->conversion($ingredient);
         $other = $this->conversion($this->ingredient('Otro insumo'));
         foreach (['tbl_inventario_productos', 'tbl_captura_inventario', 'tbl_insumos_gastos', 'tbl_pedidos', 'tbl_historial_completo_if'] as $name) {
-            DB::table($name)->insert(['insumo_id' => $ingredient->id, 'Cantidad' => 12.5, 'Fecha' => '2026-10-01']);
+            DB::table($name)->insert(['insumo_id' => $ingredient->id, 'cantidad' => 12.5, 'Fecha' => '2026-10-01']);
         }
         $before = $this->snapshot();
         $original = $conversion->getAttributes();
         $this->actingAs($this->actor(), 'web')->get(route('products.ingredients.conversions', $ingredient))->assertOk()->assertSee('Configurando Insumo')->assertSee('data-edit-conversion', false);
         $this->put($this->updateUrl($ingredient, $conversion), [
-            'bodega' => '-,615,/,1000,+,1', 'pedido' => '*,150', 'Nombre' => 'Ignorar', 'Piso' => '*,999', 'insumo_id' => $other->insumo_id, 'id' => $other->id,
+            'bodega' => '-,615,/,1000,+,1', 'pedido' => '*,150', 'nombre' => 'Ignorar', 'piso' => '*,999', 'insumo_id' => $other->insumo_id, 'id' => $other->id,
             'q' => 'Café', 'sort' => 'Nombre', 'direction' => 'desc', 'page' => 2,
         ])->assertRedirect(route('products.ingredients.index', ['q' => 'Café', 'sort' => 'Nombre', 'direction' => 'desc', 'page' => 2]))->assertSessionHas('ingredient-success', 'Insumo actualizado!!');
-        $this->assertSame([...$original, 'Bodega' => '-,615,/,1000,+,1', 'Pedido' => '*,150'], $conversion->fresh()->getAttributes());
+        $this->assertSame([...$original, 'bodega' => '-,615,/,1000,+,1', 'pedido' => '*,150'], $conversion->fresh()->getAttributes());
         $after = $this->snapshot();
         unset($before[1], $after[1]);
         $this->assertSame($before, $after);
-        $this->assertSame('*,25', $other->fresh()->Bodega);
+        $this->assertSame('*,25', $other->fresh()->bodega);
         $this->withCookie(config('session.cookie'), session()->getId())->get(route('products.ingredients.index'))->assertOk()
             ->assertSee('data-feedback-dialog', false)->assertSee('data-duration="1500"', false)->assertSee('ui-feedback-dialog--corner', false)->assertDontSee('data-redirect-url', false);
     }
@@ -341,9 +341,9 @@ class IngredientsTest extends TestCase
         $ingredient = $this->ingredient();
         $conversion = $this->conversion($ingredient);
         $this->actingAs($this->actor(), 'web')->put($this->updateUrl($ingredient, $conversion), ['bodega' => $bodega, 'pedido' => $pedido])->assertRedirect()->assertSessionHasNoErrors();
-        $this->assertSame($bodega, $conversion->fresh()->Bodega);
-        $this->assertSame($pedido, $conversion->fresh()->Pedido);
-        $this->assertSame('-,615,/,1000', $conversion->fresh()->Piso);
+        $this->assertSame($bodega, $conversion->fresh()->bodega);
+        $this->assertSame($pedido, $conversion->fresh()->pedido);
+        $this->assertSame('-,615,/,1000', $conversion->fresh()->piso);
     }
 
     #[DataProvider('invalidConversions')]
@@ -357,7 +357,7 @@ class IngredientsTest extends TestCase
         if ($error === null) {
             // Laravel's normal trimming is intentionally retained.
             $response->assertSessionHasNoErrors();
-            $this->assertSame('*,0.5', $conversion->fresh()->Pedido);
+            $this->assertSame('*,0.5', $conversion->fresh()->pedido);
         } else {
             $response->assertSessionHasErrors($error)->assertSessionMissing('ingredient-success');
             $this->assertSame($before, $this->snapshot());
@@ -372,7 +372,7 @@ class IngredientsTest extends TestCase
         $this->actingAs($this->actor(), 'web');
         $this->get(route('products.ingredients.conversions', $ingredient))->assertOk()->assertSee('no tiene operaciones configuradas')->assertDontSee('data-conversion-edit', false);
         $first = $this->conversion($ingredient);
-        $second = $this->conversion($ingredient, ['Bodega' => '*,3']);
+        $second = $this->conversion($ingredient, ['bodega' => '*,3']);
         $before = $this->snapshot();
         $this->get(route('products.ingredients.conversions', $ingredient))->assertOk()->assertSee('Existen varias conversiones')->assertDontSee('data-edit-conversion', false);
         $this->put($this->updateUrl($ingredient, $first), ['bodega' => '*,1', 'pedido' => '*,1'])->assertSessionHasErrors('conversion')->assertSessionMissing('ingredient-success');
@@ -396,7 +396,7 @@ class IngredientsTest extends TestCase
         $this->post('/Insumos', ['nombre' => 'No crear'])->assertStatus(405);
         $this->post('/Insumos/saveDontExist', ['nombre' => 'No crear'])->assertNotFound();
         $this->post('/Insumos/save', ['nombre' => 'No crear'])->assertNotFound();
-        $this->put('/Insumos/'.$ingredient->id, ['Nombre' => 'No editar'])->assertNotFound();
+        $this->put('/Insumos/'.$ingredient->id, ['nombre' => 'No editar'])->assertNotFound();
         $this->delete($this->updateUrl($other, $conversion))->assertStatus(405);
         $this->delete('/Insumos/'.$ingredient->id)->assertNotFound();
         $this->assertSame($before, $this->snapshot());
@@ -415,7 +415,7 @@ class IngredientsTest extends TestCase
         $conversion = $this->conversion($invalid);
         // Simulate inconsistent old data without weakening the application's connection settings.
         Schema::disableForeignKeyConstraints();
-        DB::table('tbl_insumos')->where('id', $invalid->id)->update([$column => 999]);
+        DB::table('insumos')->where('id', $invalid->id)->update([$column => 999]);
         Schema::enableForeignKeyConstraints();
         $before = $this->snapshot();
         $this->actingAs($this->actor(), 'web');

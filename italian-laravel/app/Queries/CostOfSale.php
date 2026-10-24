@@ -12,8 +12,8 @@ class CostOfSale
 {
     public static function orders(): EloquentBuilder
     {
-        return Ingredient::query()->where('Analisis_CV', 1)->where(function (EloquentBuilder $query): void {
-            $query->where('pedido', 1)->orWhere('Pedido_Pasteleria', 1);
+        return Ingredient::query()->where('analisis_cv', 1)->where(function (EloquentBuilder $query): void {
+            $query->where('pedido', 1)->orWhere('pedido_pasteleria', 1);
         });
     }
 
@@ -28,28 +28,11 @@ class CostOfSale
     {
         $remittances = ($filters['mode'] ?? 'orders') === 'remittances';
         if ($remittances) {
-            [$from, $to] = $this->week($filters['date'] ?? null);
-            $totals = DB::table('tbl_gastos as expense')
-                ->join('tbl_insumos_gastos as item', 'item.id', '=', 'expense.insumo_gasto_id')
-                ->whereBetween('expense.Fecha', [$from, $to])
-                ->selectRaw('expense.plaza_id, item.insumo_id, SUM(expense.Importe) as amount, SUM(expense.Cantidad) as quantity')
-                ->groupBy('expense.plaza_id', 'item.insumo_id');
-            if (filled($filters['plaza'] ?? null)) {
-                $totals->where('expense.plaza_id', $filters['plaza']);
-            }
-            $base = Ingredient::query()->from('tbl_insumos as ingredient')->toBase()
-                ->crossJoin('tbl_plazas as plaza')
-                ->leftJoinSub($totals, 'totals', function ($join): void {
-                    $join->on('totals.insumo_id', '=', 'ingredient.id')->on('totals.plaza_id', '=', 'plaza.id');
-                })
-                ->where('ingredient.pedido', 0)->where('ingredient.Pedido_Pasteleria', 0)->where('ingredient.Analisis_CV', 1)
-                ->select(['ingredient.id', 'ingredient.Nombre', 'plaza.Nombre as Plaza', 'plaza.id as plaza_id'])
-                ->selectRaw('CASE WHEN COALESCE(totals.amount, 0) = 0 AND COALESCE(totals.quantity, 0) = 0 THEN 0 ELSE totals.amount / NULLIF(totals.quantity, 0) END as Cost');
-            if (filled($filters['plaza'] ?? null)) {
-                $base->where('plaza.id', $filters['plaza']);
-            }
+            // Stage 6 must supply migrated expense history before reactivating
+            // SUM(importe)/SUM(cantidad). Never substitute stored order costs.
+            return DB::table('insumos')->select(['id', 'nombre as Nombre'])->whereRaw('1 = 0');
         } else {
-            $base = self::orders()->select(['id', 'Nombre', 'Costo_Venta as Cost'])->toBase();
+            $base = self::orders()->select(['id', 'nombre as Nombre', 'costo_venta as Cost'])->toBase();
         }
         // Apply filtering/ordering to the computed cost, without N+1 queries or PHP aggregation.
         $query = DB::query()->fromSub($base, 'costs')->select('costs.*');

@@ -9,11 +9,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Ingredient extends Model
 {
-    protected $table = 'tbl_insumos';
+    protected $table = 'insumos';
 
     public $timestamps = false;
 
     protected $guarded = ['*'];
+
+    protected function casts(): array
+    {
+        return ['costo_venta' => 'decimal:24'];
+    }
+
+    public function formulas(): HasMany
+    {
+        return $this->hasMany(ProductIngredient::class, 'insumo_id');
+    }
 
     public function category(): BelongsTo
     {
@@ -42,9 +52,9 @@ class Ingredient extends Model
 
     public function scopeWithCatalogs(Builder $query): void
     {
-        $query->join('tbl_categorias_insumos as category', 'category.id', '=', 'tbl_insumos.categorias_insumos_id')
-            ->join('tbl_unidades as initial_unit', 'initial_unit.id', '=', 'tbl_insumos.unidad_id')
-            ->join('tbl_unidades as final_unit', 'final_unit.id', '=', 'tbl_insumos.unidad_final')
-            ->join('tbl_unidades as order_unit', 'order_unit.id', '=', 'tbl_insumos.unidad_pedido');
+        $query->join('categorias_insumos as category', 'category.id', '=', 'insumos.categorias_insumos_id')
+            ->join('medidas as initial_unit', 'initial_unit.id', '=', 'insumos.unidad_id')
+            ->join('medidas as final_unit', 'final_unit.id', '=', 'insumos.unidad_final')
+            ->join('medidas as order_unit', 'order_unit.id', '=', 'insumos.unidad_pedido');
     }
 }

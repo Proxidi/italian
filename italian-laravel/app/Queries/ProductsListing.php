@@ -12,14 +12,14 @@ class ProductsListing
         ['field' => 'Nombre', 'label' => 'Nombre'], ['field' => 'Familia', 'label' => 'Familia'],
     ];
 
-    private const SORTS = ['id' => 'tbl_productos.id', 'Clave' => 'tbl_productos.Clave', 'Nombre' => 'tbl_productos.Nombre', 'Familia' => 'family.Nombre'];
+    private const SORTS = ['id' => 'productos.id', 'Clave' => 'productos.clave', 'Nombre' => 'productos.nombre', 'Familia' => 'family.nombre'];
 
     public function query(array $filters): Builder
     {
-        $query = Product::query()->join('tbl_familia_productos as family', 'family.id', '=', 'tbl_productos.familia_id')
-            ->select(['tbl_productos.*', 'family.Nombre as Familia'])->toBase();
+        $query = Product::query()->join('familias_productos as family', 'family.id', '=', 'productos.familia_id')
+            ->select(['productos.id', 'productos.clave as Clave', 'productos.nombre as Nombre', 'productos.estado as Estado', 'family.nombre as Familia'])->toBase();
         if (filled($filters['family'] ?? null)) {
-            $query->where('tbl_productos.familia_id', $filters['family']);
+            $query->where('productos.familia_id', $filters['family']);
         }
         if (filled($search = $filters['q'] ?? null)) {
             $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
@@ -30,6 +30,6 @@ class ProductsListing
             });
         }
 
-        return $query->orderBy(self::SORTS[$filters['sort'] ?? 'id'], $filters['direction'] ?? 'asc')->orderBy('tbl_productos.id');
+        return $query->orderBy(self::SORTS[$filters['sort'] ?? 'id'], $filters['direction'] ?? 'asc')->orderBy('productos.id');
     }
 }

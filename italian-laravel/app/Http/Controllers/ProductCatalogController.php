@@ -38,7 +38,7 @@ class ProductCatalogController extends Controller
         try {
             DB::transaction(function () use ($request): void {
                 ProductFamily::query()->lockForUpdate()->findOrFail($request->validated('familia_id'));
-                Product::create(['Nombre' => $request->validated('nombre'), 'Clave' => $request->validated('clave'), 'familia_id' => $request->validated('familia_id'), 'Estado' => 1]);
+                Product::create(['nombre' => $request->validated('nombre'), 'clave' => $request->validated('clave'), 'familia_id' => $request->validated('familia_id'), 'estado' => 1]);
             });
         } catch (UniqueConstraintViolationException) {
             throw ValidationException::withMessages(['nombre' => 'El nombre o la clave ya se encuentran registrados.']);

@@ -35,12 +35,12 @@ class ProductsUnitsTest extends TestCase
         $this->withoutVite();
         Schema::create('tbl_plazas', function (Blueprint $table) {
             $table->increments('id');
-            $table->string('Nombre');
+            $table->string('nombre');
         });
         $this->createNativeCoreSchema();
-        Schema::create('tbl_unidades', function (Blueprint $table) {
+        Schema::create('medidas', function (Blueprint $table) {
             $table->increments('id');
-            $table->string('Nombre', 50);
+            $table->string('nombre', 50);
         });
         foreach (['roles', 'permissions'] as $name) {
             Schema::create($name, function (Blueprint $table) {
@@ -64,8 +64,8 @@ class ProductsUnitsTest extends TestCase
             $table->unsignedBigInteger('role_id');
             $table->primary(['permission_id', 'role_id']);
         });
-        DB::table('tbl_plazas')->insert(['id' => 1, 'Nombre' => 'Plaza de prueba']);
-        DB::table('tbl_unidades')->insert([['id' => 1, 'Nombre' => 'Gramos'], ['id' => 2, 'Nombre' => 'Mililitros'], ['id' => 13, 'Nombre' => 'No Asignado']]);
+        DB::table('tbl_plazas')->insert(['id' => 1, 'nombre' => 'Plaza de prueba']);
+        DB::table('medidas')->insert([['id' => 1, 'nombre' => 'Gramos'], ['id' => 2, 'nombre' => 'Mililitros'], ['id' => 13, 'nombre' => 'No Asignado']]);
         foreach (['superadmin', 'admin', 'root', 'submanager', 'socio'] as $role) {
             Role::findOrCreate($role, 'web');
         }
@@ -95,7 +95,7 @@ class ProductsUnitsTest extends TestCase
         }
         $this->post(route('products.units.store'), ['nombre' => 'Caja'])->assertRedirect(route('login'));
         $this->put(route('products.units.update', 1), ['nombre' => 'Nuevo'])->assertRedirect(route('login'));
-        $this->assertSame('Gramos', MeasurementUnit::find(1)->Nombre);
+        $this->assertSame('Gramos', MeasurementUnit::find(1)->nombre);
         $this->assertSame(3, MeasurementUnit::count());
     }
 
@@ -109,7 +109,7 @@ class ProductsUnitsTest extends TestCase
         $this->post(route('products.units.store'), ['nombre' => 'Caja'])->assertForbidden();
         $this->put(route('products.units.update', 1), ['nombre' => 'Nuevo'])->assertForbidden();
         $this->assertSame(3, MeasurementUnit::count());
-        $this->assertSame('Gramos', MeasurementUnit::find(1)->Nombre);
+        $this->assertSame('Gramos', MeasurementUnit::find(1)->nombre);
     }
 
     public function test_manager_panel_and_units_are_live_but_other_modules_are_inert(): void
@@ -149,17 +149,17 @@ class ProductsUnitsTest extends TestCase
 
     public function test_create_accepts_accents_quotes_and_writes_only_name(): void
     {
-        $this->actingAs($this->actor(), 'web')->post(route('products.units.store'), ['nombre' => '  Porción "Café"  ', 'id' => 1, 'unidad_id' => 2, 'Estado' => 0])
+        $this->actingAs($this->actor(), 'web')->post(route('products.units.store'), ['nombre' => '  Porción "Café"  ', 'id' => 1, 'unidad_id' => 2, 'estado' => 0])
             ->assertRedirect(route('products.units.index'))->assertSessionHas('unit-success');
         $this->assertSame(4, MeasurementUnit::count());
-        $this->assertSame('Porción "Café"', MeasurementUnit::latest('id')->first()->Nombre);
-        $this->assertSame('Gramos', MeasurementUnit::find(1)->Nombre);
+        $this->assertSame('Porción "Café"', MeasurementUnit::latest('id')->first()->nombre);
+        $this->assertSame('Gramos', MeasurementUnit::find(1)->nombre);
     }
 
     public function test_duplicate_names_are_allowed_like_legacy_schema(): void
     {
         $this->actingAs($this->actor(), 'web')->post(route('products.units.store'), ['nombre' => 'Gramos'])->assertSessionHasNoErrors();
-        $this->assertSame(2, MeasurementUnit::where('Nombre', 'Gramos')->count());
+        $this->assertSame(2, MeasurementUnit::where('nombre', 'Gramos')->count());
     }
 
     public function test_unit_update_uses_the_legacy_timed_animation(): void
@@ -195,30 +195,30 @@ class ProductsUnitsTest extends TestCase
             ->assertSessionHasErrors('nombre')->assertSessionMissing('unit-success');
         $this->withCookie(config('session.cookie'), session()->getId())->get(route('products.units.index'))->assertOk()->assertSee('data-reopen', false);
         $this->assertSame(3, MeasurementUnit::count());
-        $this->assertSame('Gramos', MeasurementUnit::find(1)->Nombre);
+        $this->assertSame('Gramos', MeasurementUnit::find(1)->nombre);
     }
 
     public function test_rename_used_unit_preserves_references_quantities_and_other_units(): void
     {
-        $tables = ['tbl_insumos', 'tbl_insumos_gastos', 'tbl_captura_inventario', 'tbl_historial_completo_if'];
-        foreach (['tbl_insumos' => ['unidad_id', 'unidad_pedido', 'unidad_final'], 'tbl_insumos_gastos' => ['unidad_id'], 'tbl_captura_inventario' => ['Unidad_Bodega', 'Unidad_Piso', 'Unidad_Total'], 'tbl_historial_completo_if' => ['Unidad_Bodega', 'Unidad_Piso', 'Unidad_Total']] as $table => $columns) {
+        $tables = ['insumos', 'insumos_gastos', 'tbl_captura_inventario', 'tbl_historial_completo_if'];
+        foreach (['insumos' => ['unidad_id', 'unidad_pedido', 'unidad_final'], 'insumos_gastos' => ['unidad_id'], 'tbl_captura_inventario' => ['Unidad_Bodega', 'Unidad_Piso', 'Unidad_Total'], 'tbl_historial_completo_if' => ['Unidad_Bodega', 'Unidad_Piso', 'Unidad_Total']] as $table => $columns) {
             Schema::create($table, function (Blueprint $schema) use ($columns, $table) {
                 $schema->increments('id');
-                $schema->float('Cantidad');
+                $schema->float('cantidad');
                 foreach ($columns as $column) {
                     $schema->unsignedInteger($column);
                     if ($table !== 'tbl_historial_completo_if') {
-                        $schema->foreign($column)->references('id')->on('tbl_unidades');
+                        $schema->foreign($column)->references('id')->on('medidas');
                     }
                 }
             });
-            DB::table($table)->insert(['id' => 1, 'Cantidad' => 2.5, ...array_fill_keys($columns, 1)]);
+            DB::table($table)->insert(['id' => 1, 'cantidad' => 2.5, ...array_fill_keys($columns, 1)]);
         }
         $before = array_map(fn ($table) => DB::table($table)->get()->toJson(), $tables);
         $this->actingAs($this->actor(), 'web')->put(route('products.units.update', 1), ['nombre' => str_repeat('á', 50), 'id' => 2])
             ->assertRedirect(route('products.units.index'))->assertSessionHas('unit-success');
-        $this->assertSame(str_repeat('á', 50), MeasurementUnit::find(1)->Nombre);
-        $this->assertSame('Mililitros', MeasurementUnit::find(2)->Nombre);
+        $this->assertSame(str_repeat('á', 50), MeasurementUnit::find(1)->nombre);
+        $this->assertSame('Mililitros', MeasurementUnit::find(2)->nombre);
         $after = array_map(fn ($table) => DB::table($table)->get()->toJson(), $tables);
         $this->assertSame($before, $after);
         $this->assertSame(3, MeasurementUnit::count());
@@ -231,13 +231,13 @@ class ProductsUnitsTest extends TestCase
         $this->delete(route('products.units.update', 1))->assertStatus(405);
         $this->post('/Productos/actualizarUnidad', ['id_editar' => 1, 'nombre_editar' => 'Otro'])->assertNotFound();
         $this->get('/Unidades')->assertNotFound();
-        $this->assertSame('Gramos', MeasurementUnit::find(1)->Nombre);
+        $this->assertSame('Gramos', MeasurementUnit::find(1)->nombre);
     }
 
     public function test_literal_search_order_pagination_and_escaped_names(): void
     {
-        MeasurementUnit::create(['Nombre' => 'Caja 10%_!']);
-        MeasurementUnit::create(['Nombre' => '<script>alert(1)</script>']);
+        MeasurementUnit::create(['nombre' => 'Caja 10%_!']);
+        MeasurementUnit::create(['nombre' => '<script>alert(1)</script>']);
         $this->actingAs($this->actor(), 'web');
         $this->get(route('products.units.index', ['q' => '%_!']))->assertOk()->assertSee('Caja 10%_!')->assertDontSee('data-name="Gramos"', false);
         $this->get(route('products.units.index', ['direction' => 'desc']))->assertOk()->assertSeeInOrder(['No Asignado', 'Mililitros', 'Gramos']);
@@ -249,9 +249,9 @@ class ProductsUnitsTest extends TestCase
     public function test_exports_contain_all_filtered_sorted_rows_and_protect_formulas(): void
     {
         for ($i = 0; $i < 55; $i++) {
-            MeasurementUnit::create(['Nombre' => sprintf('Caja %02d', $i)]);
+            MeasurementUnit::create(['nombre' => sprintf('Caja %02d', $i)]);
         }
-        MeasurementUnit::create(['Nombre' => '=1+1']);
+        MeasurementUnit::create(['nombre' => '=1+1']);
         $this->actingAs($this->actor(), 'web');
         $this->get(route('products.units.index', ['q' => 'Caja']))->assertOk()->assertSee('al 50 de un total de 55');
         $response = $this->get(route('products.units.export', ['format' => 'xlsx', 'q' => 'Caja', 'direction' => 'desc', 'page' => 2]))->assertOk();
@@ -290,7 +290,7 @@ class ProductsUnitsTest extends TestCase
     public function test_units_fragment_preserves_search_sort_and_pagination_and_http_form(): void
     {
         for ($i = 0; $i < 52; $i++) {
-            MeasurementUnit::create(['Nombre' => sprintf('Unidad %03d', $i)]);
+            MeasurementUnit::create(['nombre' => sprintf('Unidad %03d', $i)]);
         }
         $this->actingAs($this->actor());
         $url = route('products.units.index', ['q' => 'Unidad', 'direction' => 'desc', 'page' => 2]);

@@ -24,7 +24,7 @@ class IngredientsController extends Controller
     public function index(IngredientsReadRequest $request, AuthenticatedNavigation $navigation, IngredientsListing $listing, ?Ingredient $ingredient = null): View|HttpResponse
     {
         if ($ingredient !== null) {
-            abort_unless(Ingredient::query()->withCatalogs()->where('tbl_insumos.id', $ingredient->id)->exists(), 404);
+            abort_unless(Ingredient::query()->withCatalogs()->where('insumos.id', $ingredient->id)->exists(), 404);
         }
         $filters = $request->safe()->only(['q', 'sort', 'direction', 'page']);
 

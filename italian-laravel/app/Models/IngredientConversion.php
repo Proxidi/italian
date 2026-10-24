@@ -7,11 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class IngredientConversion extends Model
 {
-    protected $table = 'tbl_insumos_inventario';
+    protected $table = 'conversiones_insumos';
 
     public $timestamps = false;
 
-    protected $fillable = ['Bodega', 'Pedido'];
+    protected $fillable = ['bodega', 'pedido'];
 
     public function ingredient(): BelongsTo
     {

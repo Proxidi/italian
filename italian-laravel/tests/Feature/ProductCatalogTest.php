@@ -34,47 +34,47 @@ class ProductCatalogTest extends TestCase
         DB::purge('catalog_tests');
         $this->app->forgetInstance(PermissionRegistrar::class);
         $this->withoutVite();
-        foreach (['tbl_familia_productos', 'tbl_plazas', 'tbl_unidades', 'tbl_categorias_insumos'] as $table) {
+        foreach (['familias_productos', 'tbl_plazas', 'medidas', 'categorias_insumos'] as $table) {
             Schema::create($table, function (Blueprint $table) {
                 $table->increments('id');
-                $table->string('Nombre', 50);
+                $table->string('nombre', 50);
             });
-            DB::table($table)->insert(['id' => 1, 'Nombre' => 'Catálogo de prueba']);
+            DB::table($table)->insert(['id' => 1, 'nombre' => 'Catálogo de prueba']);
         }
-        DB::table('tbl_familia_productos')->insert(['id' => 2, 'Nombre' => 'Fríos']);
-        DB::table('tbl_unidades')->insert(['id' => 2, 'Nombre' => 'Kilogramos']);
-        Schema::create('tbl_productos', function (Blueprint $table) {
+        DB::table('familias_productos')->insert(['id' => 2, 'nombre' => 'Fríos']);
+        DB::table('medidas')->insert(['id' => 2, 'nombre' => 'Kilogramos']);
+        Schema::create('productos', function (Blueprint $table) {
             $table->increments('id');
-            $table->string('Nombre', 100)->unique();
-            $table->string('Clave', 50)->unique();
+            $table->string('nombre', 100)->unique();
+            $table->string('clave', 50)->unique();
             $table->integer('familia_id');
-            $table->foreign('familia_id')->references('id')->on('tbl_familia_productos');
-            $table->tinyInteger('Estado')->default(1);
+            $table->foreign('familia_id')->references('id')->on('familias_productos');
+            $table->tinyInteger('estado')->default(1);
         });
-        Schema::create('tbl_insumos', function (Blueprint $table) {
+        Schema::create('insumos', function (Blueprint $table) {
             $table->increments('id');
-            $table->string('Nombre');
+            $table->string('nombre');
             $table->integer('unidad_id')->nullable();
             $table->integer('unidad_final')->nullable();
             $table->integer('categorias_insumos_id')->nullable();
             $table->boolean('inv_produccion')->default(true);
         });
-        Schema::create('tbl_productos_insumos', function (Blueprint $table) {
+        Schema::create('productos_insumos', function (Blueprint $table) {
             $table->increments('id');
             $table->integer('producto_id');
-            $table->foreign('producto_id')->references('id')->on('tbl_productos');
+            $table->foreign('producto_id')->references('id')->on('productos');
             $table->integer('insumo_id');
-            $table->foreign('insumo_id')->references('id')->on('tbl_insumos');
-            $table->float('Cantidad');
+            $table->foreign('insumo_id')->references('id')->on('insumos');
+            $table->float('cantidad');
         });
         // Snapshot records demonstrate that formula writes never rewrite historical consumption.
         Schema::create('tbl_platillos_vendidos', function (Blueprint $table) {
             $table->increments('id');
-            $table->string('Clave');
-            $table->foreign('Clave')->references('Clave')->on('tbl_productos');
+            $table->string('clave');
+            $table->foreign('clave')->references('clave')->on('productos');
             $table->integer('insumo_id');
             $table->float('Unidad');
-            $table->float('Total');
+            $table->float('total');
         });
         $this->createNativeCoreSchema();
         foreach (['roles', 'permissions'] as $table) {
@@ -120,26 +120,26 @@ class ProductCatalogTest extends TestCase
 
     protected function product(array $overrides = []): Product
     {
-        $id = DB::table('tbl_productos')->count() + 1;
+        $id = DB::table('productos')->count() + 1;
 
-        return Product::create(['Nombre' => 'Producto '.$id, 'Clave' => 'P'.$id, 'familia_id' => 1, 'Estado' => 1, ...$overrides]);
+        return Product::create(['nombre' => 'Producto '.$id, 'clave' => 'P'.$id, 'familia_id' => 1, 'estado' => 1, ...$overrides]);
     }
 
     protected function ingredient(array $overrides = []): Ingredient
     {
-        $id = DB::table('tbl_insumos')->insertGetId(['Nombre' => 'Insumo "Café" <b>', 'unidad_id' => 1, 'unidad_final' => 2, 'categorias_insumos_id' => 1, 'inv_produccion' => 1, ...$overrides]);
+        $id = DB::table('insumos')->insertGetId(['nombre' => 'Insumo "Café" <b>', 'unidad_id' => 1, 'unidad_final' => 2, 'categorias_insumos_id' => 1, 'inv_produccion' => 1, ...$overrides]);
 
         return Ingredient::findOrFail($id);
     }
 
     protected function line(Product $product, Ingredient $ingredient, float $quantity = 7.7): ProductIngredient
     {
-        return $product->formulas()->create(['insumo_id' => $ingredient->id, 'Cantidad' => $quantity]);
+        return $product->formulas()->create(['insumo_id' => $ingredient->id, 'cantidad' => $quantity]);
     }
 
     protected function snapshot(): array
     {
-        return array_map(fn ($table) => DB::table($table)->orderBy('id')->get()->toJson(), ['tbl_productos', 'tbl_productos_insumos', 'tbl_insumos', 'tbl_platillos_vendidos']);
+        return array_map(fn ($table) => DB::table($table)->orderBy('id')->get()->toJson(), ['productos', 'productos_insumos', 'insumos', 'tbl_platillos_vendidos']);
     }
 
     public function test_guests_cannot_read_export_or_write(): void
@@ -195,8 +195,8 @@ class ProductCatalogTest extends TestCase
 
     public function test_list_defaults_family_filters_literal_search_and_inactive_rows(): void
     {
-        $first = $this->product(['Nombre' => '<b>Café_%!</b>', 'Estado' => 0]);
-        $second = $this->product(['Nombre' => 'Frappé', 'familia_id' => 2]);
+        $first = $this->product(['nombre' => '<b>Café_%!</b>', 'estado' => 0]);
+        $second = $this->product(['nombre' => 'Frappé', 'familia_id' => 2]);
         $this->actingAs($this->actor(), 'web');
         $screen = $this->get(route('products.catalog.index'))->assertOk()->assertSee('&lt;b&gt;Café_%!&lt;/b&gt;', false)->assertSee('catalog-product-inactive');
         $this->assertSame([$first->id, $second->id], $screen->viewData('records')->pluck('id')->all());
@@ -205,7 +205,7 @@ class ProductCatalogTest extends TestCase
         $literal = $this->get(route('products.catalog.index', ['q' => '_%!']))->assertOk();
         $this->assertSame([$first->id], $literal->viewData('records')->pluck('id')->all());
         $this->get(route('products.catalog.index', ['q' => 'Ausente']))->assertSee('No se encontraron registros.');
-        $this->get(route('products.catalog.index', ['sort' => 'Nombre; DROP TABLE tbl_productos']))->assertSessionHasErrors('sort');
+        $this->get(route('products.catalog.index', ['sort' => 'Nombre; DROP TABLE productos']))->assertSessionHasErrors('sort');
         $this->get(route('products.catalog.index', ['family' => 999]))->assertSessionHasErrors('family');
     }
 
@@ -229,15 +229,15 @@ class ProductCatalogTest extends TestCase
     {
         $this->actingAs($this->actor(), 'web');
         $this->post(route('products.catalog.store'), ['nombre' => 'Café Águila', 'clave' => '001', 'familia_id' => 2])->assertRedirect(route('products.catalog.index'))->assertSessionHas('catalog-success');
-        $this->assertDatabaseHas('tbl_productos', ['Nombre' => 'Café Águila', 'Clave' => '001', 'familia_id' => 2, 'Estado' => 1]);
-        $this->assertDatabaseCount('tbl_productos_insumos', 0);
+        $this->assertDatabaseHas('productos', ['nombre' => 'Café Águila', 'clave' => '001', 'familia_id' => 2, 'estado' => 1]);
+        $this->assertDatabaseCount('productos_insumos', 0);
         $this->assertDatabaseCount('tbl_platillos_vendidos', 0);
         $this->postJson(route('products.catalog.store'), ['nombre' => 'Nuevo', 'clave' => 'N', 'familia_id' => 1])->assertOk()->assertJsonPath('message', 'Producto registrado correctamente!!');
     }
 
     public static function badProducts(): array
     {
-        return [[[]], [['nombre' => '']], [['nombre' => str_repeat('a', 101)]], [['clave' => str_repeat('a', 51)]], [['familia_id' => 999]], [['Estado' => 0]]];
+        return [[[]], [['nombre' => '']], [['nombre' => str_repeat('a', 101)]], [['clave' => str_repeat('a', 51)]], [['familia_id' => 999]], [['estado' => 0]]];
     }
 
     #[DataProvider('badProducts')]
@@ -246,16 +246,16 @@ class ProductCatalogTest extends TestCase
         $this->actingAs($this->actor(), 'web');
         $data = $overrides === [] ? [] : ['nombre' => 'Nuevo', 'clave' => 'N', 'familia_id' => 1, ...$overrides];
         $this->postJson(route('products.catalog.store'), $data)->assertUnprocessable();
-        $this->assertDatabaseCount('tbl_productos', 0);
+        $this->assertDatabaseCount('productos', 0);
     }
 
     public function test_name_and_code_duplicates_are_independently_rejected(): void
     {
         $product = $this->product();
         $this->actingAs($this->actor(), 'web');
-        $this->postJson(route('products.catalog.store'), ['nombre' => $product->Nombre, 'clave' => 'OTRA', 'familia_id' => 1])->assertUnprocessable()->assertJsonValidationErrors('nombre');
-        $this->postJson(route('products.catalog.store'), ['nombre' => 'Otro', 'clave' => $product->Clave, 'familia_id' => 1])->assertUnprocessable()->assertJsonValidationErrors('clave');
-        $this->assertDatabaseCount('tbl_productos', 1);
+        $this->postJson(route('products.catalog.store'), ['nombre' => $product->nombre, 'clave' => 'OTRA', 'familia_id' => 1])->assertUnprocessable()->assertJsonValidationErrors('nombre');
+        $this->postJson(route('products.catalog.store'), ['nombre' => 'Otro', 'clave' => $product->clave, 'familia_id' => 1])->assertUnprocessable()->assertJsonValidationErrors('clave');
+        $this->assertDatabaseCount('productos', 1);
     }
 
     public function test_formula_uses_initial_unit_and_existing_picker_contract(): void
@@ -263,14 +263,14 @@ class ProductCatalogTest extends TestCase
         $product = $this->product();
         $ingredient = $this->ingredient();
         $this->line($product, $ingredient);
-        $this->ingredient(['Nombre' => 'Sin producción', 'inv_produccion' => 0]);
-        $this->ingredient(['Nombre' => 'Sin categoría', 'categorias_insumos_id' => 999]);
-        $this->ingredient(['Nombre' => 'Sin unidad final', 'unidad_final' => 999]);
+        $this->ingredient(['nombre' => 'Sin producción', 'inv_produccion' => 0]);
+        $this->ingredient(['nombre' => 'Sin categoría', 'categorias_insumos_id' => 999]);
+        $this->ingredient(['nombre' => 'Sin unidad final', 'unidad_final' => 999]);
         $this->actingAs($this->actor(), 'web');
         $response = $this->get(route('products.formulas.index', $product))->assertOk()->assertSee('Insumo &quot;Café&quot; &lt;b&gt;', false);
         $this->assertSame([$ingredient->id], $response->viewData('ingredients')->pluck('id')->all());
         $line = $response->viewData('lines')->first();
-        $this->assertSame('Catálogo de prueba', $line->ingredient->initialUnit->Nombre);
+        $this->assertSame('Catálogo de prueba', $line->ingredient->initialUnit->nombre);
         $this->assertNotSame($line->ingredient->unidad_id, $line->ingredient->unidad_final);
         $this->assertTrue($line->editable);
     }
@@ -279,21 +279,21 @@ class ProductCatalogTest extends TestCase
     {
         $product = $this->product();
         $ingredient = $this->ingredient();
-        DB::table('tbl_platillos_vendidos')->insert(['Clave' => $product->Clave, 'insumo_id' => $ingredient->id, 'Unidad' => 7.7, 'Total' => 77]);
+        DB::table('tbl_platillos_vendidos')->insert(['clave' => $product->clave, 'insumo_id' => $ingredient->id, 'Unidad' => 7.7, 'total' => 77]);
         $history = DB::table('tbl_platillos_vendidos')->get()->toJson();
         $this->actingAs($this->actor(), 'web');
         $this->postJson(route('products.formulas.store', $product), ['insumo_id' => $ingredient->id, 'cantidad' => 7.7, 'unit_id' => 1])->assertOk()->assertJsonPath('message', 'Fórmula registrada correctamente!!');
         $line = $product->formulas()->firstOrFail();
         $this->putJson(route('products.formulas.update', [$product, $line]), ['cantidad' => 0, 'unit_id' => 1])->assertOk();
-        $this->assertEquals(0, $line->fresh()->Cantidad);
+        $this->assertEquals(0, $line->fresh()->cantidad);
         $this->assertSame($ingredient->id, $line->fresh()->insumo_id);
         $this->assertSame($history, DB::table('tbl_platillos_vendidos')->get()->toJson());
-        $this->assertDatabaseHas('tbl_productos', ['id' => $product->id, 'Estado' => 1]);
+        $this->assertDatabaseHas('productos', ['id' => $product->id, 'estado' => 1]);
     }
 
     public static function invalidQuantities(): array
     {
-        return [[null], [''], ['texto'], [-1], ['INF'], ['NaN'], ['1e309'], ['3.5e38'], ['1e-99'], [[]]];
+        return [[null], [''], ['texto'], [-1], ['INF'], ['NaN'], ['1e309'], ['1e41'], ['1e-99'], [[]]];
     }
 
     #[DataProvider('invalidQuantities')]
@@ -333,9 +333,9 @@ class ProductCatalogTest extends TestCase
         $url = route('products.formulas.update', [$product, $line]);
         $this->putJson($url, ['cantidad' => 2, 'unit_id' => 2])->assertUnprocessable()->assertJsonValidationErrors('unit_id');
         $this->putJson($url, ['cantidad' => 2, 'unit_id' => 1, 'insumo_id' => 2, 'producto_id' => 2, 'unidad_id' => 2])->assertUnprocessable()->assertJsonValidationErrors(['insumo_id', 'producto_id', 'unidad_id']);
-        DB::table('tbl_insumos')->where('id', $ingredient->id)->update(['unidad_id' => 2]);
+        DB::table('insumos')->where('id', $ingredient->id)->update(['unidad_id' => 2]);
         $this->putJson($url, ['cantidad' => 2, 'unit_id' => 1])->assertUnprocessable();
-        $this->assertEquals(7.7, $line->fresh()->Cantidad);
+        $this->assertEquals(7.7, $line->fresh()->cantidad);
     }
 
     public function test_missing_and_ineligible_relations_fail_without_writes(): void
@@ -346,12 +346,12 @@ class ProductCatalogTest extends TestCase
         $this->postJson(route('products.formulas.store', $product), ['cantidad' => 1, 'insumo_id' => $ingredient->id, 'unit_id' => 1])->assertUnprocessable();
         $this->postJson(route('products.formulas.store', $product), ['cantidad' => 1, 'insumo_id' => 999, 'unit_id' => 1])->assertUnprocessable();
         $this->get('/Productos/999/formulas')->assertNotFound();
-        $this->assertDatabaseCount('tbl_productos_insumos', 0);
+        $this->assertDatabaseCount('productos_insumos', 0);
         $line = $this->line($product, $ingredient);
         $other = $this->product();
         $this->putJson(route('products.formulas.update', [$other, $line]), ['cantidad' => 1, 'unit_id' => 1])->assertNotFound();
         $this->putJson(route('products.formulas.update', [$product, 999]), ['cantidad' => 1, 'unit_id' => 1])->assertNotFound();
-        DB::table('tbl_insumos')->where('id', $ingredient->id)->update(['unidad_id' => 999]);
+        DB::table('insumos')->where('id', $ingredient->id)->update(['unidad_id' => 999]);
         $this->get(route('products.formulas.index', $product))->assertOk()->assertSee('Unidad inexistente');
         $this->putJson(route('products.formulas.update', [$product, $line]), ['cantidad' => 1, 'unit_id' => 1])->assertUnprocessable();
     }
@@ -366,7 +366,7 @@ class ProductCatalogTest extends TestCase
         $line = $product->formulas()->firstOrFail();
         $this->get(route('products.formulas.edit', [$product, $line]))->assertOk()->assertSee('value="0.125"', false)->assertSee('<noscript>', false);
         $this->from(route('products.formulas.edit', [$product, $line]))->put(route('products.formulas.update', [$product, $line]), ['cantidad' => -1, 'unit_id' => 1])->assertSessionHasErrors('cantidad');
-        $this->assertEquals(0.125, $line->fresh()->Cantidad);
+        $this->assertEquals(0.125, $line->fresh()->cantidad);
     }
 
     public function test_failed_formula_write_rolls_back(): void
@@ -377,16 +377,16 @@ class ProductCatalogTest extends TestCase
             throw new \RuntimeException('Synthetic failure');
         });
         $this->actingAs($this->actor(), 'web')->putJson(route('products.formulas.update', [$product, $line]), ['cantidad' => 2, 'unit_id' => 1])->assertServerError();
-        $this->assertEquals(7.7, $line->fresh()->Cantidad);
+        $this->assertEquals(7.7, $line->fresh()->cantidad);
     }
 
     public function test_exports_include_all_filtered_rows_in_order_without_actions_or_executable_formulas(): void
     {
         for ($i = 0; $i < 505; $i++) {
-            $this->product(['Nombre' => 'Export '.str_pad((string) $i, 3, '0', STR_PAD_LEFT), 'familia_id' => 2]);
+            $this->product(['nombre' => 'Export '.str_pad((string) $i, 3, '0', STR_PAD_LEFT), 'familia_id' => 2]);
         }
-        $this->product(['Nombre' => '=1+1', 'familia_id' => 2]);
-        $this->product(['Nombre' => 'Excluir']);
+        $this->product(['nombre' => '=1+1', 'familia_id' => 2]);
+        $this->product(['nombre' => 'Excluir']);
         $this->actingAs($this->actor(), 'web');
         $response = $this->get(route('products.catalog.export', ['format' => 'xlsx', 'family' => 2, 'sort' => 'Nombre', 'direction' => 'desc', 'page' => 2]))->assertOk()->assertDownload('productos.xlsx');
         $book = IOFactory::load($response->baseResponse->getFile()->getPathname());
@@ -410,7 +410,7 @@ class ProductCatalogTest extends TestCase
         $this->actingAs($this->actor(), 'web');
         $this->delete(route('products.formulas.update', [$product, $line]))->assertStatus(405);
         $this->delete('/Productos/'.$product->id)->assertNotFound();
-        $this->put('/Productos/'.$product->id, ['Nombre' => 'Cambio'])->assertNotFound();
+        $this->put('/Productos/'.$product->id, ['nombre' => 'Cambio'])->assertNotFound();
         $this->post('/Productos/activarProducto')->assertNotFound();
         $this->post('/Formulas/delete')->assertNotFound();
         $this->assertSame($before, $this->snapshot());
@@ -437,10 +437,10 @@ class ProductCatalogTest extends TestCase
         $product = $this->product();
         $ingredient = $this->ingredient();
         $line = $this->line($product, $ingredient);
-        Schema::withoutForeignKeyConstraints(fn () => DB::table('tbl_insumos')->where('id', $ingredient->id)->delete());
+        Schema::withoutForeignKeyConstraints(fn () => DB::table('insumos')->where('id', $ingredient->id)->delete());
         $this->actingAs($this->actor(), 'web')->get(route('products.formulas.index', $product))->assertOk()->assertSee('Insumo inexistente');
         $this->putJson(route('products.formulas.update', [$product, $line]), ['cantidad' => 1, 'unit_id' => 1])->assertNotFound();
-        Schema::withoutForeignKeyConstraints(fn () => DB::table('tbl_productos')->where('id', $product->id)->update(['familia_id' => 999]));
+        Schema::withoutForeignKeyConstraints(fn () => DB::table('productos')->where('id', $product->id)->update(['familia_id' => 999]));
         $this->get(route('products.formulas.index', $product))->assertNotFound();
     }
 
@@ -450,7 +450,7 @@ class ProductCatalogTest extends TestCase
         $ingredient = $this->ingredient(['inv_produccion' => 0]);
         $line = $this->line($product, $ingredient);
         $this->actingAs($this->actor(), 'web')->putJson(route('products.formulas.update', [$product, $line]), ['cantidad' => 2, 'unit_id' => 1])->assertOk();
-        $this->assertEquals(2, $line->fresh()->Cantidad);
+        $this->assertEquals(2, $line->fresh()->cantidad);
         $this->assertSame(0, $ingredient->fresh()->inv_produccion);
     }
 
@@ -460,15 +460,15 @@ class ProductCatalogTest extends TestCase
             throw new \RuntimeException('Synthetic product failure');
         });
         $this->actingAs($this->actor(), 'web')->postJson(route('products.catalog.store'), ['nombre' => 'Nuevo', 'clave' => 'N', 'familia_id' => 1])->assertServerError();
-        $this->assertDatabaseCount('tbl_productos', 0);
+        $this->assertDatabaseCount('productos', 0);
     }
 
     public function test_listing_fragment_preserves_family_search_sort_and_pagination_with_http_fallback(): void
     {
         for ($i = 0; $i < 82; $i++) {
-            $this->product(['Nombre' => sprintf('Café %03d', $i)]);
+            $this->product(['nombre' => sprintf('Café %03d', $i)]);
         }
-        $this->product(['Nombre' => 'Otro', 'familia_id' => 2]);
+        $this->product(['nombre' => 'Otro', 'familia_id' => 2]);
         $params = ['family' => 1, 'q' => 'Café', 'sort' => 'Nombre', 'direction' => 'desc', 'page' => 2];
         $url = route('products.catalog.index', $params);
         $this->actingAs($this->actor());

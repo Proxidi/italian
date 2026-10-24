@@ -6,6 +6,7 @@ use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\ProductIngredient;
 use App\Queries\ProductFormulas;
+use App\Rules\ExactProductDecimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -27,12 +28,12 @@ class SaveFormula
                 throw ValidationException::withMessages(['insumo_id' => 'El insumo ya está asociado o existen filas duplicadas que requieren revisión.']);
             }
             if ($current) {
-                $current->update(['Cantidad' => $data['cantidad']]);
+                $current->update(['cantidad' => ExactProductDecimal::normalize($data['cantidad'])]);
             } else {
                 if (! app(ProductFormulas::class)->eligibleIngredients()->whereKey($ingredient->id)->exists()) {
                     throw ValidationException::withMessages(['insumo_id' => 'Selecciona un insumo de producción con sus catálogos completos.']);
                 }
-                $parent->formulas()->create(['insumo_id' => $ingredient->id, 'Cantidad' => $data['cantidad']]);
+                $parent->formulas()->create(['insumo_id' => $ingredient->id, 'cantidad' => ExactProductDecimal::normalize($data['cantidad'])]);
             }
         });
     }
