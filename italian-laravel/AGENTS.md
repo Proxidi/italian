@@ -15,8 +15,10 @@ El responsable reporta la importación local; no confundirla con nuestras prueba
 sintéticas. La etapa 4 adapta Configurar a `configuracion_corte_dlc` y
 `configuracion_notificaciones`, con importación global atómica, sin sobrescribir
 configuraciones operativas. La etapa 5 adapta Medidas/Insumos/Productos/Fórmulas
-y Costo Pedido a tablas nativas; Costo Remesas espera Gastos de etapa 6, con aviso
-explícito y sin cálculos simulados. La importación agrupada `legacy:importar-productos`
+y Costo Pedido a tablas nativas. La etapa 6 recupera Costo Remesas con historial
+nativo de Gastos/conceptos y catálogos mínimos, sin captura de Gastos; utiliza
+`legacy:validar-remesas` / `legacy:importar-remesas`, mantenimiento y reserva propia
+de IDs, sin cambiar costos Pedido ni permisos. La importación agrupada `legacy:importar-productos`
 requiere mantenimiento para escrituras reales y conserva una reserva técnica de
 IDs en `inicializaciones_sistema`, sin modificar el bootstrap Spatie.
 El bootstrap inicial de Spatie

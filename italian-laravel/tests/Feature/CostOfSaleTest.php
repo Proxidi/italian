@@ -32,7 +32,7 @@ class CostOfSaleTest extends TestCase
         DB::purge('cost_tests');
         $this->app->forgetInstance(PermissionRegistrar::class);
         $this->withoutVite();
-        foreach (['tbl_plazas', 'medidas', 'categorias_insumos'] as $name) {
+        foreach (['medidas', 'categorias_insumos'] as $name) {
             Schema::create($name, function (Blueprint $table) {
                 $table->increments('id');
                 $table->string('nombre', 50);
@@ -57,20 +57,7 @@ class CostOfSaleTest extends TestCase
             $table->double('costo_venta');
             $table->integer('orden_captura_inventario')->default(0);
         });
-        Schema::create('tbl_insumos_gastos', function (Blueprint $table) {
-            $table->increments('id');
-            $table->integer('insumo_id');
-            $table->integer('unidad_id')->default(1);
-        });
-        Schema::create('tbl_gastos', function (Blueprint $table) {
-            $table->increments('id');
-            $table->integer('plaza_id');
-            $table->integer('insumo_gasto_id');
-            $table->float('Importe');
-            $table->float('cantidad');
-            $table->date('Fecha');
-            $table->boolean('estado')->default(true);
-        });
+        (require database_path('migrations/2026_10_24_000003_create_remittance_cost_history_tables.php'))->up();
         foreach (['roles', 'permissions'] as $name) {
             Schema::create($name, function (Blueprint $table) {
                 $table->bigIncrements('id');
@@ -93,7 +80,11 @@ class CostOfSaleTest extends TestCase
             $table->unsignedBigInteger('permission_id');
             $table->primary(['role_id', 'permission_id']);
         });
-        DB::table('tbl_plazas')->insert(['id' => 1, 'nombre' => 'Plaza sintética']);
+        DB::table('plazas')->insert(['id' => 1, 'nombre' => 'Plaza sintética', 'acronimo' => 'PRU']);
+        DB::table('familias_gastos')->insert(['id' => 1, 'clave' => 'GDF', 'nombre' => 'Fabricación']);
+        DB::table('grupos_gastos')->insert(['id' => 1, 'familia_id' => 1, 'nombre' => 'Abarrotes']);
+        DB::table('grupos_captura_gastos')->insert(['id' => 1, 'nombre' => 'Managers']);
+        DB::table('formas_pago')->insert(['id' => 1, 'nombre' => 'Efectivo']);
         DB::table('categorias_insumos')->insert(['id' => 1, 'nombre' => 'Categoría de prueba']);
         DB::table('medidas')->insert([['id' => 1, 'nombre' => 'Gramos'], ['id' => 5, 'nombre' => 'Kilogramos'], ['id' => 6, 'nombre' => 'Paquetes']]);
         foreach (['root', 'superadmin', 'admin', 'submanager', 'socio'] as $role) {
@@ -125,8 +116,11 @@ class CostOfSaleTest extends TestCase
 
     protected function expense(Ingredient $ingredient, float $amount, float $quantity, string $date = '2026-10-20', int $plaza = 1, int $state = 1): void
     {
-        $item = DB::table('tbl_insumos_gastos')->insertGetId(['insumo_id' => $ingredient->id]);
-        DB::table('tbl_gastos')->insert(['plaza_id' => $plaza, 'insumo_gasto_id' => $item, 'Importe' => $amount, 'cantidad' => $quantity, 'Fecha' => $date, 'estado' => $state]);
+        if (! Usuario::whereKey(500)->exists()) {
+            $this->nativeUser(attributes: ['id' => 500]);
+        }
+        $item = DB::table('conceptos_gastos')->insertGetId(['insumo_id' => $ingredient->id, 'unidad_id' => 1, 'grupo_id' => 1, 'grupo_captura_id' => 1, 'nombre' => 'Concepto', 'stock_minimo' => 0, 'stock_maximo' => 0, 'bandera_stocks' => 0]);
+        DB::table('gastos')->insert(['usuario_id' => 500, 'plaza_id' => $plaza, 'concepto_gasto_id' => $item, 'forma_pago_id' => 1, 'importe' => $amount, 'cantidad' => $quantity, 'fecha' => $date, 'estado' => $state, 'modificacion' => 0, 'nueva_cantidad' => 0, 'antigua_cantidad' => 0, 'notas' => '', 'archivos' => '', 'folio' => '', 'corte' => 0]);
     }
 
     public function test_orders_use_stored_cost_and_correct_flag_groups_without_formulas(): void
@@ -141,9 +135,9 @@ class CostOfSaleTest extends TestCase
         $this->assertSame(2, app(CostOfSale::class)->query([])->count());
     }
 
-    public function test_remittances_are_unavailable_even_with_legacy_expense_fixtures(): void
+    public function test_remittances_use_all_states_and_inclusive_week_and_plaza(): void
     {
-        DB::table('tbl_plazas')->insert(['id' => 2, 'nombre' => 'Otra plaza']);
+        DB::table('plazas')->insert(['id' => 2, 'nombre' => 'Otra plaza', 'acronimo' => 'OTR']);
         $item = $this->ingredient('Azúcar', ['pedido' => 0]);
         $this->ingredient('Sin compras', ['pedido' => 0]);
         $this->ingredient('Pedido excluido');
@@ -154,18 +148,19 @@ class CostOfSaleTest extends TestCase
         $this->expense($item, 800, 2, plaza: 2);
         $query = app(CostOfSale::class);
         $rows = $query->query(['mode' => 'remittances', 'date' => '2026-10-20'])->get();
-        $this->assertCount(0, $rows);
+        $this->assertCount(4, $rows);
+        $this->assertEquals(38, $rows->where('id', $item->id)->where('plaza_id', 1)->first()->Cost);
         $this->actingAs($this->actor())->get(route('products.cost-of-sale.index', ['mode' => 'remittances', 'date' => '2026-10-20', 'plaza' => 1]))
-            ->assertOk()->assertSee('etapa 6')->assertSee('2026-10-19')->assertSee('2026-10-25')->assertDontSee('data-edit-cost', false)->assertDontSee('$38.000');
+            ->assertOk()->assertDontSee('pendiente de migrar')->assertSee('2026-10-19')->assertSee('2026-10-25')->assertDontSee('data-edit-cost', false)->assertSee('$38.000');
     }
 
-    public function test_pending_remittances_do_not_simulate_zero_denominator_results(): void
+    public function test_zero_denominator_with_amount_is_explicitly_not_calculable(): void
     {
         $item = $this->ingredient('Inconsistente', ['pedido' => 0]);
         $this->expense($item, 20, 0);
         $this->actingAs($this->actor())->get(route('products.cost-of-sale.index', ['mode' => 'remittances', 'date' => '2026-10-20']))
-            ->assertOk()->assertSee('Consulta temporalmente no disponible.')->assertDontSee('$0.000');
-        $this->assertNull(app(CostOfSale::class)->query(['mode' => 'remittances', 'date' => '2026-10-20'])->first());
+            ->assertOk()->assertSee('No calculable (cantidad total cero)')->assertDontSee('$0.000');
+        $this->assertNull(app(CostOfSale::class)->query(['mode' => 'remittances', 'date' => '2026-10-20'])->first()->Cost);
     }
 
     public function test_iso_week_uses_the_date_year_correctly_at_year_boundary(): void
@@ -174,9 +169,9 @@ class CostOfSaleTest extends TestCase
         $this->assertSame(['2025-12-29', '2026-01-04'], app(CostOfSale::class)->week('2025-12-31'));
     }
 
-    public function test_pending_remittance_filters_preserve_http_and_fragment_interfaces(): void
+    public function test_remittance_filters_preserve_http_and_fragment_interfaces(): void
     {
-        DB::table('tbl_plazas')->insert(['id' => 2, 'nombre' => 'Otra']);
+        DB::table('plazas')->insert(['id' => 2, 'nombre' => 'Otra', 'acronimo' => 'OTR']);
         $a = $this->ingredient('Café A', ['pedido' => 0]);
         $b = $this->ingredient('Café B', ['pedido' => 0]);
         $this->ingredient('Té', ['pedido' => 0]);
@@ -184,10 +179,10 @@ class CostOfSaleTest extends TestCase
         $this->expense($b, 50, 2);
         $this->actingAs($this->actor());
         $params = ['mode' => 'remittances', 'date' => '2026-10-20', 'plaza' => 1, 'q' => 'Café', 'sort' => 'Cost', 'direction' => 'desc'];
-        $full = $this->get(route('products.cost-of-sale.index', $params))->assertOk()->assertSee('etapa 6');
+        $full = $this->get(route('products.cost-of-sale.index', $params))->assertOk()->assertSee('$25.000');
         $partial = $this->withHeader('X-Listing-Fragment', 'listing')->get(route('products.cost-of-sale.index', $params))->assertOk()
             ->assertHeader('X-Listing-Fragment', 'listing')->assertDontSee('<html', false)->assertDontSee('app-sidebar', false)
-            ->assertSee('etapa 6')->assertSee('name="plaza"', false)->assertSee('value="Café"', false)->assertDontSee('data-record-row><td>3', false);
+            ->assertSee('$25.000')->assertSee('name="plaza"', false)->assertSee('value="Café"', false)->assertDontSee('data-record-row><td>3', false);
         $this->assertStringContainsString($partial->getContent(), $full->getContent());
     }
 
@@ -206,7 +201,7 @@ class CostOfSaleTest extends TestCase
         $this->actingAs($this->actor())->get(route('products.cost-of-sale.index', ['q' => '$1,234.57']))
             ->assertOk()->assertSee('data-record-row', false)->assertSee('$1,234.57');
         $this->get(route('products.cost-of-sale.index', ['mode' => 'remittances', 'date' => '2026-10-20', 'q' => '$1,234.568']))
-            ->assertOk()->assertDontSee('data-record-row', false)->assertDontSee('$1,234.568</td>', false)->assertSee('etapa 6');
+            ->assertOk()->assertSee('data-record-row', false)->assertSee('$1,234.568</td>', false)->assertDontSee('pendiente de migrar');
     }
 
     public function test_legacy_cost_tables_have_neither_export_nor_pagination(): void
@@ -255,7 +250,7 @@ class CostOfSaleTest extends TestCase
         $item = $this->ingredient();
         $this->expense($item, 100, 2);
         $before = $item->getAttributes();
-        $expenses = DB::table('tbl_gastos')->get()->toJson();
+        $expenses = DB::table('gastos')->get()->toJson();
         $this->actingAs($this->actor());
         $this->get(route('products.cost-of-sale.edit', $item))->assertOk()->assertSee('data-cost-form', false)->assertSee('name="_token"', false)->assertSee('name="_method" value="PUT"', false);
         $this->put(route('products.cost-of-sale.update', $item), ['cost' => 1.234567, 'q' => 'Café', 'direction' => 'desc'])->assertRedirect(route('products.cost-of-sale.index', ['q' => 'Café', 'direction' => 'desc']));
@@ -263,7 +258,7 @@ class CostOfSaleTest extends TestCase
         $this->assertEquals(1.234567, $after['costo_venta']);
         unset($before['costo_venta'], $after['costo_venta']);
         $this->assertSame($before, $after);
-        $this->assertSame($expenses, DB::table('tbl_gastos')->get()->toJson());
+        $this->assertSame($expenses, DB::table('gastos')->get()->toJson());
         $this->putJson(route('products.cost-of-sale.update', $item), ['cost' => 0])->assertOk()->assertJsonPath('message', 'Costo actualizado.');
         $this->assertEquals(0, $item->fresh()->costo_venta);
     }

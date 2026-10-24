@@ -14,9 +14,6 @@
     @fragment('listing')
     <x-ui.listing data-async-list label="Costo de Venta">
         @php($remittances = ($filters['mode'] ?? 'orders') === 'remittances')
-        @if($remittances)
-            <p class="ui-feedback ui-feedback--notice" role="status">Costo de Venta Remesas está temporalmente pendiente de migrar el historial de Gastos en la etapa 6. No se muestran costos hasta disponer de esos datos.</p>
-        @endif
         <form method="GET" action="{{ route('products.cost-of-sale.index') }}" class="cost-filters">
             @foreach(['q', 'sort', 'direction'] as $key)@if(isset($filters[$key]))<input type="hidden" name="{{ $key }}" value="{{ $filters[$key] }}">@endif @endforeach
             <fieldset class="products-options catalog-options"><legend>Opciones:</legend>
@@ -50,10 +47,10 @@
             </x-slot:head>
             @forelse($records as $record)
                 <tr data-record-row><td>{{ $record->id }}</td>@if($remittances)<td>{{ $record->Plaza }}</td>@endif<td>{{ $record->Nombre }}</td>
-                    <td>@if($record->Cost === null)No calculable (cantidad total cero)@else${{ number_format($record->Cost, $remittances ? 3 : 2) }}@endif</td>
+                    <td>@if($record->Cost === null)No calculable (cantidad total cero)@else${{ $remittances ? \App\Support\RemittanceCost::format($record->Cost) : number_format($record->Cost, 2) }}@endif</td>
                     @if(!$remittances)<td>@can('products.cost-of-sale.update')<x-ui.table-action color="green" data-edit-cost :href="route('products.cost-of-sale.edit', ['ingredient' => $record->id, ...$filters])" aria-label="Editar costo de {{ $record->Nombre }}" />@else<span>Sin permiso de edición</span>@endcan</td>@endif
                 </tr>
-            @empty<tr><td colspan="4">{{ $remittances ? 'Consulta temporalmente no disponible.' : 'No se encontraron registros.' }}</td></tr>@endforelse
+            @empty<tr><td colspan="4">No se encontraron registros.</td></tr>@endforelse
         </x-ui.table>
         @unless($remittances)<p class="ui-list__copy-status" role="status">{{ $records->count() }} registros.</p>@endunless
     </x-ui.listing>

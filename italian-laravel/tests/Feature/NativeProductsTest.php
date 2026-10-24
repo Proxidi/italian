@@ -60,11 +60,11 @@ class NativeProductsTest extends CoreFunctionalTestCase
         }
     }
 
-    public function test_remittances_are_controlled_without_costs_or_sql_dependencies(): void
+    public function test_remittances_use_native_history_without_legacy_or_order_writes(): void
     {
         $this->actingAs($this->nativeUser('root'), 'web');
         $this->get(route('products.cost-of-sale.index', ['mode' => 'remittances']))->assertOk()
-            ->assertSee('etapa 6')->assertDontSee('$0.000')->assertDontSee('data-record-row', false);
+            ->assertDontSee('pendiente de migrar')->assertDontSee('$0.000')->assertDontSee('data-record-row', false);
         $this->assertCount(0, app(CostOfSale::class)->query(['mode' => 'remittances'])->get());
         $this->putJson(route('products.cost-of-sale.update', ['ingredient' => 71]), ['mode' => 'remittances', 'cost' => '1'])->assertForbidden();
     }

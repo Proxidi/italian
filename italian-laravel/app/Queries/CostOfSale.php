@@ -28,9 +28,20 @@ class CostOfSale
     {
         $remittances = ($filters['mode'] ?? 'orders') === 'remittances';
         if ($remittances) {
-            // Stage 6 must supply migrated expense history before reactivating
-            // SUM(importe)/SUM(cantidad). Never substitute stored order costs.
-            return DB::table('insumos')->select(['id', 'nombre as Nombre'])->whereRaw('1 = 0');
+            [$from, $to] = $this->week($filters['date'] ?? null);
+            $totals = DB::table('gastos as g')
+                ->join('conceptos_gastos as c', 'c.id', '=', 'g.concepto_gasto_id')
+                ->whereBetween('g.fecha', [$from, $to])
+                ->when(filled($filters['plaza'] ?? null), fn (Builder $q) => $q->where('g.plaza_id', $filters['plaza']))
+                ->selectRaw('g.plaza_id, c.insumo_id, SUM(g.importe) AS importe, SUM(g.cantidad) AS cantidad')
+                ->groupBy('g.plaza_id', 'c.insumo_id');
+            $numerator = DB::connection()->getDriverName() === 'sqlite' ? 't.importe * 1.0' : 't.importe';
+            $base = DB::table('insumos as i')->crossJoin('plazas as p')
+                ->leftJoinSub($totals, 't', fn ($join) => $join->on('t.insumo_id', '=', 'i.id')->on('t.plaza_id', '=', 'p.id'))
+                ->where('i.analisis_cv', 1)->where('i.pedido', 0)->where('i.pedido_pasteleria', 0)
+                ->when(filled($filters['plaza'] ?? null), fn (Builder $q) => $q->where('p.id', $filters['plaza']))
+                ->select(['i.id', 'i.nombre as Nombre', 'p.id as plaza_id', 'p.nombre as Plaza'])
+                ->selectRaw('CASE WHEN COALESCE(t.importe, 0) = 0 AND COALESCE(t.cantidad, 0) = 0 THEN 0 WHEN t.cantidad = 0 THEN NULL ELSE '.$numerator.' / NULLIF(t.cantidad, 0) END AS Cost');
         } else {
             $base = self::orders()->select(['id', 'nombre as Nombre', 'costo_venta as Cost'])->toBase();
         }

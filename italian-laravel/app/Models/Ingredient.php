@@ -50,6 +50,11 @@ class Ingredient extends Model
         return $this->hasMany(IngredientConversion::class, 'insumo_id');
     }
 
+    public function expenseConcepts(): HasMany
+    {
+        return $this->hasMany(ConceptoGasto::class, 'insumo_id');
+    }
+
     public function scopeWithCatalogs(Builder $query): void
     {
         $query->join('categorias_insumos as category', 'category.id', '=', 'insumos.categorias_insumos_id')

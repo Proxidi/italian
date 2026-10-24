@@ -1,5 +1,283 @@
 # Contexto de migración — CodeIgniter a Laravel
 
+## BD nueva — etapa 6: Costo de Venta Remesas (2026-10-23)
+
+Implementado localmente en `migracion-bd`, sin commit/push ni importación sobre
+bases reales. Esta sección sustituye el pendiente de Remesas de etapa 5. No es
+la migración integral del módulo Gastos, ni de Remesas/Pedidos/Ventas/Inventario.
+
+### Recorrido y regla comprobada
+
+Se inspeccionaron `Insumos::getInsumosCostoVenta`, `getInsumosCompras`,
+`fncInsumosCompras*`, `fechaLunes/fechaDomingo`,
+`Mdl_productos::getInsumosCostoVentaCompras/getPrecioPromedioInsumo` y la vista
+`administrador/productos/insumos/costo_venta.php`. Las referencias puntuales a
+`Mdl_remesas`, su controlador, `Mdl_ventas` y `Mdl_pedidos` determinan la
+semántica de catálogos, stocks, metadatos y consumidores futuros; no migran esas UI.
+
+Recorrido: `tbl_gastos.insumo_gasto_id → tbl_insumos_gastos.id → insumo_id →
+tbl_insumos.id`. En Laravel: `gastos.concepto_gasto_id → conceptos_gastos.id →
+insumos.id`. Cada concepto tiene un solo insumo; varios conceptos pueden apuntar
+al mismo insumo y TODOS sus gastos participan, sin duplicar filas por joins.
+
+El listado cruza los insumos `analisis_cv=1 AND pedido=0 AND pedido_pasteleria=0`
+con todas las plazas, o la plaza seleccionada. Para cada pareja suma **gastos.importe**
+y **gastos.cantidad**, no nueva_cantidad/antigua_cantidad, dentro de la semana de
+la fecha elegida: lunes y domingo inclusivos, sobre una columna DATE. Divide
+SUM(importe)/SUM(cantidad); 100/2 y 90/3 producen 190/5 = **38.000**, no el promedio
+simple de 50 y 30. La agregación se ejecuta una sola vez en SQL, no dos consultas
+por cada pareja. No escribe ni usa `insumos.costo_venta`, reservado a Pedido.
+
+No filtra estado, modificacion, corte, rol del autor, forma de pago, grupo de
+captura ni unidades. Algunas consultas de listados de Remesas excluyen roles de
+autores, pero **esa condición no existe en el cálculo de Productos** y no se copia.
+No hace conversiones: el costo representa importe por cantidad registrada de los
+conceptos asociados, no garantiza una normalización por kilogramo/litro.
+
+Casos verificados:
+
+- Sin gastos, o ambos acumulados en cero: **0.000**, explícitamente así en legacy.
+- Importe cero y cantidad distinta de cero: 0.000 por el cociente.
+- Cantidad acumulada cero con importe distinto de cero: `NULL` y
+  **No calculable (cantidad total cero)**. Evita la división inválida de CI;
+  conserva la protección Laravel anterior a etapa 5.
+- Cantidades/importes con signo se conservan sin correcciones silenciosas. Los
+  nuevos importadores rechazan nulos/fechas inválidas/números que no quepan exactamente.
+- Tres decimales de presentación, mitad alejándose de cero, sin convertir a
+  float en PHP: `RemittanceCost` usa Brick Math ya instalado. No se redondean los
+  registros históricos ni los acumulados para almacenarlos. MySQL usa DECIMAL
+  al sumar/dividir (escala del cociente derivada por MySQL); SQLite solo verifica
+  comportamiento, pues su afinidad NUMERIC puede usar binarios y no demuestra precisión.
+
+CI redondea a tres al cargar inicialmente y usa `toFixed(3)` al responder AJAX;
+Laravel aplica una única regla decimal al presentar. CI también mezcla año civil
+y semana ISO al calcular lunes/domingo: la corrección Laravel existente para
+semanas entre años se mantiene (2021-01-01 → 2020-12-28/2021-01-03).
+La semana predeterminada usa la zona efectiva actual de Laravel, UTC; no se cambia
+la configuración global ni se convierte ninguna fecha histórica, que carece de hora.
+
+### Persistencia mínima con historial completo
+
+Migration: `2026_10_24_000003_create_remittance_cost_history_tables.php`.
+IDs `BIGINT UNSIGNED` preservados; FKs restrictivas, sin cascadas ni timestamps
+históricos. Se conserva el gasto completo para no crear después otra representación
+incompatible del mismo historial, aunque esta etapa solo permita consultarlo.
+
+| Origen | Destino | Filas del dump | Siguiente ID del origen |
+| --- | --- | ---: | ---: |
+| tbl_familia_gastos | familias_gastos | 2 | 3 (max+1; origen sin AUTO_INCREMENT) |
+| tbl_grupo_gastos | grupos_gastos | 24 | 27 |
+| tbl_grupos_roles | grupos_captura_gastos | 7 | 9 |
+| tbl_unidades_pago | formas_pago | 2 | 3 |
+| tbl_insumos_gastos | conceptos_gastos | 183 | 188 |
+| tbl_gastos | gastos | 135223 | 140200 |
+
+Conteos estáticos del dump disponible, no de la BD del responsable. No se importó
+el dump a una BD de pruebas. Fechas: 2019-01-01–2026-10-08. El análisis dirigido
+no encontró huérfanos en las nueve relaciones; todos esos gastos tienen estado=1,
+tres tienen cantidad cero y ninguno importe/cantidad negativos. Las pruebas
+sintéticas cubren estados distintos que la consulta tampoco excluye.
+
+Mapeo detallado (columnas no listadas como transformación conservan significado):
+
+| Tabla destino | Columnas y transformación desde origen | Tipos / relaciones |
+| --- | --- | --- |
+| familias_gastos | id→id, Clave→clave, Nombre→nombre | clave varchar(5) UNIQUE; nombre varchar(50) |
+| grupos_gastos | id, familia_id, Nombre→nombre | FK familia_id→familias_gastos; nombre varchar(50) |
+| grupos_captura_gastos | id, Nombre→nombre | nombre varchar(50) UNIQUE; catálogo histórico, NO roles Spatie |
+| formas_pago | id, Nombre→nombre | nombre varchar(50) UNIQUE; efectivo/transferencia históricos |
+| conceptos_gastos | id, grupo_id, insumo_id, unidad_id, grupo_rol_id→grupo_captura_id, Nombre→nombre, stock_minimo, stock_maximo, bandera_stocks | cuatro FKs a grupos_gastos/insumos/medidas/grupos_captura_gastos; nombre(50), stocks DECIMAL(65,24), bandera signed TINYINT |
+| gastos | id, usuario_id, plaza_id, insumo_gasto_id→concepto_gasto_id, unidad_pago_id→forma_pago_id | cuatro FKs a usuarios/plazas/conceptos_gastos/formas_pago |
+| gastos | Cantidad→cantidad, Importe→importe, Nueva_Cantidad→nueva_cantidad, Antigua_Cantidad→antigua_cantidad | DECIMAL(65,24), sin redondeo al importar |
+| gastos | Fecha→fecha, Modificacion→modificacion, Estado→estado, Corte→corte | DATE original; flags signed TINYINT conservados, sin reinterpretarlos como booleanos |
+| gastos | Notas→notas, Archivos→archivos, Folio→folio | varchar(300), varchar(300), varchar(20), incluyendo vacíos y valores originales |
+
+Índices de consulta `gastos_plaza_periodo_concepto(plaza_id,fecha,concepto_gasto_id)`
+y `gastos_periodo_concepto_plaza(fecha,concepto_gasto_id,plaza_id)`, además de PKs,
+UNIQUEs y soporte de FKs. No UNIQUE(insumo_id) en conceptos: el dump tiene dos
+insumos con varios conceptos. El genérico 116 NO_INVENTARIADO agrupa unidades
+distintas, pero `analisis_cv=0` lo excluye del listado; se preserva para consumidores
+futuros, sin fusionarlo ni calcular conversiones inventadas.
+
+Los FLOAT originales se leen como `CAST(... AS CHAR)` en MySQL y se convierten a
+DECIMAL exacto a partir de esa representación, sin intermediario float PHP. No
+se recuperan dígitos binarios inexistentes ni se promete identidad binaria con
+FLOAT; el objetivo es sumar los valores decimales conservados y presentar tres
+decimales. El dump tiene como máximo 8 decimales en campos de ajustes y 3 en
+cantidad/2 en importe, muy por debajo de la escala elegida. Se usa el rango de
+etapa 5 para admitir los enteros de FLOAT y sus fracciones observadas con la misma
+validación exacta. No representa todo posible subnormal FLOAT: un origen distinto
+que exceda 41 enteros/24 fracciones se rechaza, no se trunca.
+
+Modelos de lectura `Gasto` y `ConceptoGasto`, sin mass assignment habilitado.
+Relaciones Eloquent gasto→concepto/usuario/plaza; concepto→insumo/unidad/gastos;
+Ingredient→expenseConcepts. El resto de los catálogos se importa mediante Query
+Builder: una FK de MySQL no requiere un modelo sin consumidores operativos.
+
+### Importadores, validación y recuperación
+
+Comandos definitivos agrupados:
+
+```bash
+./vendor/bin/sail artisan legacy:validar-remesas
+./vendor/bin/sail artisan legacy:importar-remesas --dry-run
+./vendor/bin/sail artisan legacy:importar-remesas --lote=500
+```
+
+`RemittancesImporter` reutiliza ImportConnections y ImportReport: conexiones
+directas mysql/legacy a bases y cuentas efectivamente distintas, destino
+italian_laravel estricto/utf8mb4/FKs activas, fuente italian utf8mb4 con SELECT/USAGE
+directos, sin roles heredados ni privilegios de escritura. No toca caché Spatie,
+usuarios, permisos, Insumos, Fórmulas ni el marcador de inicialización de roles.
+Requiere plazas/usuarios/medidas/insumos importados, sin reimportarlos ni inventar
+dependencias. También requiere poder leer efectivamente las seis tablas origen.
+
+Prevalida todos los conjuntos por PK ascendente, con lotes 1–2000. Mantiene sets
+de IDs para FKs y compara filas de destino por lote; no materializa los 135 mil
+gastos completos ni hace una consulta por gasto. Conserva IDs/textos/fechas/flags;
+verifica UTF-8 y las unicidades con la collation real de cada columna del destino.
+Normaliza decimales para comparación. Inexistente válido→pendiente/insertar;
+idéntico→omitir; distinto→conflicto; inválido/huérfano→rechazar. Un solo problema
+bloquea todas las escrituras del conjunto. Reporta conteos y hasta 25 IDs/motivos
+por tabla, sin volcar datos personales, contraseñas, SQL ni notas.
+
+`--dry-run` y validar son estrictamente SELECT/SHOW: no insertan reservas, no
+tocan cachés, no alteran secuencias ni abren una transacción de escritura. Una
+fuente vacía puede validar como cero filas y jamás genera defaults; fuente parcial
+con referencias faltantes se rechaza. Cero filas no significa que haya historial
+de costos importado: debe cotejarse con los conteos esperados del origen autorizado.
+
+Se calcula huella SHA-256 de todas las columnas, IDs y secuencias, y se vuelve a
+leer la fuente para detectar cambios durante prevalidación. La escritura real
+requiere `artisan down`; detener también workers, cron y otros escritores del
+destino. Tras prevalidar se conserva una reserva técnica **remesas_importacion_v1**
+en inicializaciones_sistema, con la huella como versión y fecha REAL de intento.
+Es distinta del bootstrap y no modifica permisos. La reserva permite reintentar
+los mismos IDs si MySQL consumió AUTO_INCREMENT durante un rollback.
+
+Todas las filas de las seis tablas se insertan por lotes dentro de **una transacción
+atómica**. Se bloquean padres nativos y filas destino pertinentes; se revalidan
+conflictos y se comprueba otra vez la huella de origen antes de confirmar. No es
+un sistema de sincronización continua: para el corte final hay que detener
+escrituras CI o usar una copia coherente de las seis tablas y sus padres. Las
+huellas detectan cambios observados, pero no sustituyen una ventana de corte.
+
+Si falla antes del commit, se revierte TODO el historial; puede quedar la reserva.
+Corregir el problema y repetir el mismo comando con la misma fuente. Si la fuente
+cambió respecto de la reserva se detiene: revisión explícita, no borrar el marcador
+para forzar overwrites. Si existen IDs consumidos sin reserva propia también se
+rechazan. Tras el commit se elevan secuencias a max(origen_siguiente,max_id+1),
+sin reducir el contador del destino. Esto se hace después de la transacción porque
+ALTER TABLE en MySQL implica commit. Si falla esa fase, repetir compara filas
+idénticas y termina las secuencias, sin insertar duplicados.
+
+Validar después de importar compara todas las columnas, FKs y conflictos de las
+filas fuente, no solo conteos. Además compara sumas DECIMAL de importe/cantidad
+de hasta tres semanas representativas por plaza/insumo y muestra
+`agregados_verificados`. La comprobación usa únicamente los IDs históricos para
+permitir gastos futuros nativos; no exige que todo destino sea una copia vacía de
+operaciones nuevas. Un desacuerdo bloquea/deniega la validación. La conversión
+decimal de la muestra origen es la misma de la importación, no SUM(FLOAT) aproximado.
+
+### Interfaz, permisos y contratos futuros
+
+Se retira únicamente el aviso provisional. Se mantienen ruta
+`Insumos/getInsumosCostoVenta`, selector Pedido/Remesas, fecha, fin de semana,
+plaza/todas, búsqueda, orden y fetch/History API existentes, con respaldo GET
+completo sin JS. El usuario puede combinar filtros y navegar atrás/adelante.
+Como en legacy, NO hay paginación ni exportaciones en esta pantalla:
+DataTables tenía paging=false y buttons vacío; no se agregan capacidades ajenas.
+
+Permisos originales products.cost-of-sale.view/update, inicialmente root; ningún
+bypass ni concesión nueva. Remesas no muestra editar y las escrituras forjadas
+con mode=remittances siguen denegadas. Pedido sigue utilizando su costo almacenado,
+su actualización autorizada, CSRF y feedback, sin refactor innecesario.
+
+Futuros Gastos/Remesas deben registrar en ESTAS mismas tablas, preservando la
+plaza/fecha del gasto y referenciando conceptos existentes. No duplicar gastos
+importados ni reusar IDs reservados. Stocks/bandera de conceptos son consumidos
+por Remesas; nombres de grupo/clave de familia y grupos de captura por catálogos,
+captura y reportes; Mdl_ventas::actualizarTablaGastos actualiza por fecha/plaza
+para Corte. Esas escrituras NO se migran ahora. Mdl_pedidos tiene una referencia
+a tbl_insumos_gastos, pero sus flujos completos siguen fuera de alcance; conservar
+los conceptos no acredita la migración de Pedidos. Tampoco se autoriza con grupos
+de captura en sustitución de Spatie.
+
+Notas/folio/lista de archivos y ajustes históricos se conservan para esos módulos;
+se importan nombres de archivos, **no los comprobantes físicos**, su almacenamiento
+y sus operaciones de subida/borrado. No existe aún captura, edición, aprobación
+ni eliminación Laravel de Gastos. El cálculo puede consultar nuevos gastos solo
+cuando un proceso nativo futuro los produzca, sin cambiar esta fórmula.
+
+### Procedimiento local, después de revisar/sincronizar esta etapa
+
+Respaldar destino y fijar un origen coherente; confirmar etapas anteriores ya
+importadas, cuentas y DB efectivas. No volver a ejecutar bootstrap/seeders.
+
+```bash
+./vendor/bin/sail artisan config:clear
+./vendor/bin/sail artisan migrate:status
+./vendor/bin/sail artisan migrate --pretend --database=mysql
+./vendor/bin/sail artisan down
+./vendor/bin/sail artisan migrate --database=mysql --force
+./vendor/bin/sail artisan legacy:validar-remesas
+./vendor/bin/sail artisan legacy:importar-remesas --dry-run
+./vendor/bin/sail artisan legacy:importar-remesas --lote=500
+./vendor/bin/sail artisan legacy:validar-remesas
+./vendor/bin/sail artisan up
+```
+
+Revisar el SQL pretendido antes de aplicarlo; mantener detenidos escritores
+destino y origen hasta finalizar validación. Exigir cero rechazados/conflictos y,
+después de importar, cero pendientes, conteos acordes al origen y comprobaciones
+agregadas correctas. Ante errores no ejecutar up automáticamente ni continuar
+con otra etapa: resolver el reporte y reintentar según el caso anterior.
+Luego comprobar Costo Pedido y Remesas por varias plazas/semanas. En este dump
+la última fecha es 2026-10-08: usar por ejemplo la semana 2026-10-05–11; una
+semana actual posterior sin registros dará cero conforme a la regla legacy.
+No se ejecutó ninguno de estos comandos sobre las bases del responsable.
+
+### Archivos y verificación
+
+Nuevos: migration anterior; Models/Gasto.php y ConceptoGasto.php;
+Support/RemittanceCost.php; Services/Legacy/RemittancesImporter.php;
+Console/Commands/ImportLegacyRemittances.php y ValidateLegacyRemittances.php;
+tests/Support/RemittanceFixtures.php; tests/Feature/NativeRemittancesTest.php y
+RemittancesImportTest.php. Adaptados: Models/Ingredient.php,
+Queries/CostOfSale.php, products/cost-of-sale.blade.php, CostOfSaleTest.php,
+NativeProductsTest.php y documentación/guías. Sin archivos eliminados, cambios
+de dependencias, .env, JS/CSS, infraestructura, legacy o dump original.
+
+Pruebas ejecutadas con datos sintéticos y bases descartables:
+
+- SQLite: 224 pruebas / 2888 aserciones en NativeRemittances, NativeProducts,
+  CostOfSale, ProductsUnits, Ingredients, ProductCatalog, UsersRead y Configuration.
+  Después del último caso de esquema/relación: NativeRemittances 11 / 741.
+- MySQL **8.4.13**, PHP **8.5.11**: regresión funcional 50 / 8711 en
+  NativeRemittances, NativeProducts, NativeCore, Authentication y NativeConfiguration.
+  Comprobación final de NativeRemittances: 11 / 1696.
+- Importadores MySQL: RemittancesImport **25 / 688**, incluyendo SELECT/SHOW
+  estricto en dry-run, lectura denegada, conflictos, FK huérfanas, fechas/decimales
+  inválidos, collation, filas parciales/vacías, varias plazas/periodos, idempotencia,
+  rollback/reintento, cambio concurrente del origen y recuperación de secuencias
+  después del commit. No hay escrituras desde la conexión legacy.
+- Las ejecuciones se solapan: no sumar estos números como pruebas únicas.
+  El runner se configuró con 512 MiB para la regresión que genera XLSX/PDF; el
+  primer intento con 128 MiB agotó memoria en ZipStream, y pasó al repetir con
+  ese límite del proceso de prueba, sin cambios en la aplicación/infraestructura.
+- Chromium real 1366 y 390: login sintético, bienvenida/mock, Pedido→Remesas,
+  semana normalizada, plaza, búsqueda monetaria, orden, atrás/adelante, periodo
+  sin compras y vuelta a Pedido, manteniendo el mismo documento con fetch. Sin
+  errores JS ni overflow horizontal. Login y listado Remesas funcionan también
+  con JavaScript deshabilitado, mediante envío/navegación HTTP.
+- Pint limitado a los PHP de esta etapa y git diff --check. No se compiló Vite:
+  no cambiaron JS, CSS, imágenes ni entradas de assets; el preview utilizó el
+  build existente. Los servicios de pruebas se retiran al terminar.
+
+Se preservan Login/Usuarios/bitácora/Inicio/Spatie/Configurar y las capacidades de
+Productos verificadas. No acredita pruebas sobre datos reales ni migración de
+captura de Gastos. La fuente final requiere la ventana coherente descrita arriba.
+
 ## BD nueva — etapa 5: persistencia de Productos (2026-10-23)
 
 Trabajo local en `migracion-bd`. No implica importación de datos reales ni avance a
