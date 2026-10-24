@@ -69,6 +69,9 @@ class ProductsImporter
                     $target->table($table)->insert($chunk);
                 }
             }
+            if (hash('sha256', json_encode($this->snapshot($source), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)) !== $fingerprint) {
+                throw new ImportSafetyException('El origen cambió durante las escrituras; catálogo revertido. Detenga los escritores del origen antes de reintentar.');
+            }
         });
         foreach (self::MAP as $from => [$to]) {
             // DDL implicitly commits in MySQL. Only after all catalog rows commit.

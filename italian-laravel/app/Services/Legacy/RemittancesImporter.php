@@ -191,10 +191,15 @@ class RemittancesImporter
                     }
                     $references[$table][$id] = true;
                     if ($existing->has($id)) {
-                        try {
-                            $same = $this->normalize($table, (array) $existing[$id]) === $row;
-                        } catch (\Throwable) {
-                            $same = false;
+                        // MySQL already returns DECIMAL(65,24) as canonical strings.
+                        // Compare every field against the validated canonical source,
+                        // without running the same Validator a second time per row.
+                        $same = true;
+                        foreach ($row as $field => $value) {
+                            if (! isset($existing[$id]->$field) || (string) $existing[$id]->$field !== (string) $value) {
+                                $same = false;
+                                break;
+                            }
                         }
                         $report->record($same ? 'identicos' : 'conflictos', $id, $same ? '' : 'datos_distintos');
 

@@ -12,10 +12,31 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\NativeCoreFixtures;
 use Tests\TestCase;
 
 class CoreSchemaTest extends TestCase
 {
+    use NativeCoreFixtures, \Tests\Support\ProductFixtures;
+
+    public function test_incremental_migrations_preserve_populated_core_and_products(): void
+    {
+        $this->artisan('migrate:rollback', ['--database' => self::CONNECTION, '--force' => true])->assertExitCode(0);
+        $paths = array_map(fn ($path) => 'database/migrations/'.basename($path), array_filter(glob(database_path('migrations/*.php')), fn ($path) => ! str_contains($path, '000003_create_remittance')));
+        $this->artisan('migrate', ['--database' => self::CONNECTION, '--path' => $paths, '--force' => true])->assertExitCode(0);
+        Role::findOrCreate('root', 'web');
+        $user = $this->nativeUser('root', ['id' => 1]);
+        $this->seedProductRows();
+        $before = DB::table('usuarios')->first();
+        $formula = DB::table('productos_insumos')->first();
+        $this->artisan('migrate', ['--database' => self::CONNECTION, '--force' => true])->assertExitCode(0);
+        $this->assertEquals($before, DB::table('usuarios')->first());
+        $this->assertEquals($formula, DB::table('productos_insumos')->first());
+        $this->assertSame(1, $user->roles()->count());
+        $this->assertSame(0, DB::table('gastos')->count());
+        $this->artisan('migrate:rollback', ['--database' => self::CONNECTION, '--step' => count($paths) + 1, '--force' => true])->assertExitCode(0);
+    }
+
     private const CONNECTION = 'core_schema_tests';
 
     private bool $migrated = false;
@@ -79,6 +100,10 @@ class CoreSchemaTest extends TestCase
             'cache', 'cache_locks', 'jobs', 'job_batches', 'failed_jobs',
             'roles', 'permissions', 'model_has_roles', 'model_has_permissions', 'role_has_permissions',
             'migrations', 'inicializaciones_sistema',
+            'configuracion_corte_dlc', 'configuracion_notificaciones',
+            'medidas', 'categorias_insumos', 'familias_productos', 'insumos',
+            'conversiones_insumos', 'productos', 'productos_insumos',
+            'familias_gastos', 'grupos_gastos', 'grupos_captura_gastos', 'formas_pago', 'conceptos_gastos', 'gastos',
         ];
         $schema = DB::getDriverName() === 'mysql' ? DB::connection()->getDatabaseName() : null;
         $this->assertEqualsCanonicalizing($expected, Schema::getTableListing(schema: $schema, schemaQualified: false));

@@ -175,4 +175,16 @@ class ProductsImportTest extends TestCase
         $this->artisan('legacy:importar-productos')->assertExitCode(0);
         $this->assertSame('0.100000000000000020000000', DB::table('insumos')->value('costo_venta'));
     }
+
+    public function test_source_changed_during_destination_insert_rolls_back_every_catalog(): void
+    {
+        DB::connection()->beforeExecuting(function ($sql): void {
+            if (str_starts_with(strtolower($sql), 'insert into `productos_insumos`')) {
+                DB::connection('product_fixtures')->table('tbl_insumos')->update(['Costo_Venta' => '200']);
+            }
+        });
+        $this->artisan('legacy:importar-productos')->assertExitCode(1);
+        $this->assertDatabaseCount('medidas', 0);
+        $this->assertDatabaseCount('productos_insumos', 0);
+    }
 }

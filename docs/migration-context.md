@@ -1,5 +1,18 @@
 # Contexto de migración — CodeIgniter a Laravel
 
+## BD nueva — etapa 7: auditoría y estabilización (2026-10-24)
+
+Informe verificable: [auditoria-etapa-7.md](auditoria-etapa-7.md), con clasificación
+A–E de referencias, evidencia por módulo, hallazgos, pruebas, perfilado y propuesta
+de cutover/reversión. Trabajo local en migracion-bd, sin commit/push ni despliegue.
+Se añade verificación de la fuente de Productos antes del commit y comparación
+canónica de destino para Remesas; se actualizan tests de esquema/redirección y se
+añaden pruebas incremental, de concurrencia y de agregación sin N+1. No hay nuevas
+migrations ni cambios de reglas, permisos, UI o datos reales. Se mantiene legacy
+solo para importadores. La independencia operativa no implica que Pedidos, Corte,
+notificaciones, Inventario/Ventas o captura de Gastos estén migrados. Producción
+requiere resolver la conciliación de snapshots, archivos y ensayar recuperación.
+
 ## BD nueva — etapa 6: Costo de Venta Remesas (2026-10-23)
 
 Implementado localmente en `migracion-bd`, sin commit/push ni importación sobre

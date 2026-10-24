@@ -17,6 +17,22 @@ class NativeRemittancesTest extends CoreFunctionalTestCase
 {
     use ProductFixtures, RemittanceFixtures;
 
+    public function test_many_ingredients_and_plazas_use_one_aggregate_query(): void
+    {
+        DB::table('plazas')->insert(['id' => 2, 'nombre' => 'Segunda', 'acronimo' => 'SEG']);
+        $row = (array) DB::table('insumos')->where('id', 71)->first();
+        for ($id = 100; $id < 120; $id++) {
+            DB::table('insumos')->insert(array_replace($row, ['id' => $id, 'nombre' => 'Insumo '.$id]));
+        }
+        $count = 0;
+        DB::listen(function () use (&$count): void {
+            $count++;
+        });
+        $rows = app(CostOfSale::class)->query(['mode' => 'remittances', 'date' => '2026-10-20'])->get();
+        $this->assertCount(42, $rows);
+        $this->assertSame(1, $count);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

@@ -21,6 +21,32 @@ class RemittancesImportTest extends TestCase
 
     private bool $prepared = false;
 
+    public function test_profile_historical_batches(): void
+    {
+        if (getenv('REMITTANCES_PROFILE') !== '1') {
+            $this->markTestSkipped('Medición explícita con historial sintético.');
+        }
+        $count = (int) (getenv('REMITTANCES_PROFILE_ROWS') ?: 5000);
+        $this->assertGreaterThan(1, $count);
+        $this->assertLessThanOrEqual(135223, $count);
+        $source = DB::connection('remittance_fixtures');
+        $template = (array) $source->table('tbl_gastos')->first();
+        for ($start = 1; $start < $count; $start += 500) {
+            $rows = [];
+            for ($i = $start; $i < min($count, $start + 500); $i++) {
+                $rows[] = array_replace($template, ['id' => 100 + $i]);
+            }
+            $source->table('tbl_gastos')->insert($rows);
+        }
+        foreach (['validar' => true, 'importar' => false, 'validar_importado' => true] as $phase => $dry) {
+            $start = microtime(true);
+            $reports = app(RemittancesImporter::class)->run($dry);
+            $this->assertFalse($reports['gastos']->hasProblems());
+            fwrite(STDERR, sprintf("PROFILE %s rows=%d seconds=%.3f peakMiB=%.1f\n", $phase, $count, microtime(true) - $start, memory_get_peak_usage(true) / 1048576));
+        }
+        $this->assertDatabaseCount('gastos', $count);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -126,6 +152,19 @@ class RemittancesImportTest extends TestCase
         $this->assertDatabaseHas('insumos', ['id' => 71, 'costo_venta' => '153.12']);
         $this->assertDatabaseCount('productos_insumos', 1);
         $this->assertDatabaseCount('model_has_roles', 1);
+    }
+
+    public function test_canonical_comparison_checks_decimals_dates_flags_and_empty_text_without_writes(): void
+    {
+        $this->artisan('legacy:importar-remesas')->assertExitCode(0);
+        $original = (array) DB::table('gastos')->where('id', 100)->first();
+        foreach (['cantidad' => '2.000000000000000000000001', 'importe' => '100.01', 'fecha' => '2026-10-20', 'estado' => 0, 'notas' => 'Cambio', 'folio' => 'Otro', 'archivos' => '', 'modificacion' => 0, 'nueva_cantidad' => '0.1', 'antigua_cantidad' => '-0.1', 'corte' => 1] as $field => $value) {
+            DB::table('gastos')->where('id', 100)->update([$field => $value]);
+            $reports = app(RemittancesImporter::class)->run(true);
+            $this->assertSame(1, $reports['gastos']->counts['conflictos'], $field);
+            DB::table('gastos')->where('id', 100)->update($original);
+        }
+        $this->assertSame(1, app(RemittancesImporter::class)->run(true)['gastos']->counts['identicos']);
     }
 
     public static function invalidRows(): array
